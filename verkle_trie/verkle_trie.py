@@ -416,7 +416,6 @@ def make_kzg_multiproof(Cs, fs, indices, ys, display_times=True):
     log_time_if_eligible("   Computed commitment D", 30, display_times)
 
     # Step 2: Compute h in evaluation form
-
     t = hash_to_int([r, D]) % MODULUS
 
     h = [0 for i in range(WIDTH)]
