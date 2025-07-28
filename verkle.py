@@ -1,4 +1,3 @@
-# TODO: Add verkle tree here
 from hashlib import sha256
 import hashlib, secrets, sympy
 from py_ecc.optimized_bls12_381 import optimized_curve as curve, pairing
@@ -27,7 +26,6 @@ class VerkleNode:
         self.value = value
         self.children = None if (value is not None) else [None] * branch_factor
         self.commitment = None
-        
 
 class VerkleTree:
     # Empty || Leaf(Key, Value) || Node(Commitment, Children)
@@ -52,6 +50,7 @@ class VerkleTree:
         self.recommit(self.root)
 
     def key_path(self, key: int):
+        """Returns the path to the key in the verkle tree."""
         path = []
         while key > 0:
             path.append(key % self.branch_factor)
@@ -59,14 +58,33 @@ class VerkleTree:
         return path.reverse()
 
     def recommit(self, node: VerkleNode):
-        pass
+        """Recomputes the commitment for the given node and all its children. (Post-order)"""
+        if node.children is None:
+            return
+        for child in node.children:
+            if child is not None:
+                self._recommit(child)
+        poly = []
+        for child in node.children:
+            if child is None:
+                poly.append(0)
+            elif child.children is None:
+                poly.append(child.value % curve.curve_order)
+            else:
+                # commitment to a scalar (TODO)
+                pass
+            
+        node.commitment = commit(poly, self.srs)
 
     def root_commit(self): 
         return self.root.commitment
 
     def prove(self, key: int): 
         pass
-
+    
+    @staticmethod
+    # TODO: Joules
+    # TODO: WARNING BECAREFUL IF BUG OCCCURS
     def verify(self, key: int, value: int, proof):
         pass
 

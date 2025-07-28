@@ -15,8 +15,7 @@ def main():
     print(f"Proof steps for key 10: {len(tree1_proof)}")
 
     tree1_verfn = tree1.verify(tree1_root_commit, 2025, tree1_proof)
-
-
+    
     tree2 = verkle.VerkleTree(16)
     # 2025 in base-16 is [7, E, 9] (7 * 16^2 + (E|14) * 16^1 + 9 * 16^0)
     tree2.insert(2025, 0xdeadbeef)
