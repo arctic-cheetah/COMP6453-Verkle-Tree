@@ -90,7 +90,6 @@ class VerkleTree:
 
 
 #           KZG Commitment (https://raw.githubusercontent.com/giuliop/plonk/main/kzg.py)
-
 # Curve order
 factorization = [
     2**32, 3, 11, 19, 10177, 125527, 859267, 906349, 906349,
