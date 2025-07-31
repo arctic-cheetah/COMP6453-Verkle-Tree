@@ -1,38 +1,63 @@
 from hashlib import sha256
 import hashlib, secrets, sympy
 from py_ecc.optimized_bls12_381 import optimized_curve as curve, pairing
+from verkle_trie.kzg_utils import KzgUtils
+from fft import fft
+from poly_utils import PrimeField
+import pippenger
+import blst
+import hashlib
 
 # Commitment is 256 bits
 
 ## A verkle tree is a Merkle tree with polynomial commitments at each node.
-'''
+"""
     Need the following constructs:
     - Verkle tree data structure
     - Prove and verify functions
-'''
+"""
 
+
+# Use KZG settings as seen in verkle_trie
 class VerkleNode:
+
     # Empty || Leaf(Key, Value) || Node(Commitment, Children)
     # Commitment is a polynomial commitment to the values in the children nodes.
     # Children is a list of verkleNode objects.
     # Value is the value at the leaf node, or None for non-leaf nodes.
     def __init__(self, branch_factor: int, value=None):
-        '''
-            Initializes a verkle node.
-            User provides a value if its a leaf node.
-            If value is None, it is a non-leaf node and children will be initialized.
-        '''
+        """
+        Initializes a verkle node.
+        User provides a value if its a leaf node.
+        If value is None, it is a non-leaf node and children will be initialized.
+        """
         self.branch_factor = branch_factor
         self.value = value
         self.children = None if (value is not None) else [None] * branch_factor
         self.commitment = None
 
+
 class VerkleTree:
+    # Verkle Trie parameters kept the same as Ethereum's implementation
+    KEY_LEN = 256
+    WIDTH = 16
+    PRIMITIVE_ROOT = 7
+    MODULUS = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
+    primefield = PrimeField(MODULUS)
+
+    ROOT_OF_UNITY = pow(PRIMITIVE_ROOT, (MODULUS - 1) // WIDTH, MODULUS)
+    DOMAIN = []
+
     # Empty || Leaf(Key, Value) || Node(Commitment, Children)
-    def __init__(self, branch_factor : int):
+    def __init__(self, branch_factor: int):
+        self.DOMAIN = [
+            pow(self.ROOT_OF_UNITY, i, self.MODULUS) for i in range(self.WIDTH)
+        ]
         self.branch_factor = branch_factor
         # making an empty node
-        self.root = VerkleNode(branch_factor)  
+        self.root = VerkleNode(branch_factor)
+
+    # Insert function acts as a prover according to video.
 
     def insert(self, key: int, value: int):
         node = self.root
@@ -73,15 +98,15 @@ class VerkleTree:
             else:
                 # commitment to a scalar (TODO)
                 pass
-            
+
         node.commitment = commit(poly, self.srs)
 
-    def root_commit(self): 
+    def root_commit(self):
         return self.root.commitment
 
-    def prove(self, key: int): 
+    def prove(self, key: int):
         pass
-    
+
     @staticmethod
     # TODO: Joules
     # TODO: WARNING BECAREFUL IF BUG OCCCURS
@@ -89,17 +114,32 @@ class VerkleTree:
         pass
 
 
-#           KZG Commitment (https://raw.githubusercontent.com/giuliop/plonk/main/kzg.py)
+# KZG Commitment (https://raw.githubusercontent.com/giuliop/plonk/main/kzg.py)
 # Curve order
 factorization = [
-    2**32, 3, 11, 19, 10177, 125527, 859267, 906349, 906349,
-    2508409, 2529403, 52437899, 254760293, 254760293
+    2**32,
+    3,
+    11,
+    19,
+    10177,
+    125527,
+    859267,
+    906349,
+    906349,
+    2508409,
+    2529403,
+    52437899,
+    254760293,
+    254760293,
 ]
 q_1 = 1
-for f in factorization: q_1 *= f
+for f in factorization:
+    q_1 *= f
 assert q_1 == curve.curve_order - 1
 
 """Code from giuliop/plonk"""
+
+
 def commit(poly, h):
     """
     Commit to a polynomial.
@@ -122,6 +162,7 @@ def commit(poly, h):
         com_f = curve.add(com_f, curve.multiply(h[0][d], pi))
 
     return com_f
+
 
 def generate_setup(s):
     pass
