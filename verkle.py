@@ -16,21 +16,23 @@ class VerkleNode:
     # Commitment is a polynomial commitment to the values in the children nodes.
     # Children is a list of verkleNode objects.
     # Value is the value at the leaf node, or None for non-leaf nodes.
-    def __init__(self, branch_factor: int, value=None):
+    def __init__(self, branch_factor: int, is_leaf = False):
         '''
             Initializes a verkle node.
             User provides a value if its a leaf node.
             If value is None, it is a non-leaf node and children will be initialized.
         '''
         self.branch_factor = branch_factor
-        self.value = value
-        self.children = None if (value is not None) else [None] * branch_factor
+        self.children = None if is_leaf else [None] * branch_factor
+        self.value = None
         self.commitment = None
 
 class VerkleTree:
     # Empty || Leaf(Key, Value) || Node(Commitment, Children)
     def __init__(self, branch_factor : int):
         self.branch_factor = branch_factor
+        # one SRS for all nodes
+        self.srs = generate_setup(branch_factor)
         # making an empty node
         self.root = VerkleNode(branch_factor)  
 
@@ -40,11 +42,11 @@ class VerkleTree:
         # descend and allocate internal nodes
         for i in path[:-1]:
             if node.children[i] is None:
-                node.children[i] = VerkleNode(self.b)
+                node.children[i] = VerkleNode(self.branch_factor)
             node = node.children[i]
         # final slot becomes leaf
         leaf_index = path[-1]
-        node.children[leaf_index] = VerkleNode(self.b, is_leaf=True)
+        node.children[leaf_index] = VerkleNode(self.branch_factor, is_leaf=True)
         node.children[leaf_index].value = value
         # recompute all commitments
         self.recommit(self.root)
@@ -80,7 +82,30 @@ class VerkleTree:
         return self.root.commitment
 
     def prove(self, key: int): 
-        pass
+        path = self._key_path(key)
+        node = self.root
+        proof = []
+        for idx in path:
+            # build node's polynomial
+            poly = []
+            for child in node.children:
+                if child is None:
+                    poly.append(0)
+                elif child.children is None:
+                    poly.append(child.value % curve.curve_order)
+                else:
+                    poly.append(point_to_field(child.commitment))
+            # open at index idx
+            v, pi = open_poly(poly, idx, self.srs)
+            proof.append({'C': node.commitment, 'i': idx, 'v': v, 'pi': pi})
+            # descend
+            nxt = node.children[idx]
+            if nxt is None:
+                raise KeyError(f"No entry for key {key}")
+            if nxt.children is None:
+                break
+            node = nxt
+        return proof
     
     @staticmethod
     # TODO: Joules
