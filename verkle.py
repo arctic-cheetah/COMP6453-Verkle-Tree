@@ -1,3 +1,4 @@
+from enum import Enum
 from hashlib import sha256
 import hashlib, secrets, sympy
 from py_ecc.optimized_bls12_381 import optimized_curve as curve, pairing
@@ -7,8 +8,13 @@ from poly_utils import PrimeField
 import pippenger
 import blst
 import hashlib
+from typing import *
 
 # Commitment is 256 bits
+
+# websites
+# https://lucasmartincalderon.medium.com/verkle-trees-everything-you-need-to-know-321c9c8bc2f6
+# https://blog.ethereum.org/2021/12/02/verkle-tree-structure
 
 ## A verkle tree is a Merkle tree with polynomial commitments at each node.
 """
@@ -18,14 +24,31 @@ import hashlib
 """
 
 
+class NodeType(Enum):
+    # Every node is either
+    # (i) empty,
+    # (ii) a leaf node containing a key and value, or
+    # (iii) an intermediate node that has some fixed number of children
+    # (the "width" of the tree)
+    EMPTY = 0
+    INNER = 1
+    LEAF = 2
+
+
 # Use KZG settings as seen in verkle_trie
 class VerkleNode:
+    node_type: NodeType = NodeType.EMPTY
+    children: List["VerkleNode"] = []
+    commitment = blst.G1().mult(0)
+    value = -1
 
     # Empty || Leaf(Key, Value) || Node(Commitment, Children)
     # Commitment is a polynomial commitment to the values in the children nodes.
     # Children is a list of verkleNode objects.
     # Value is the value at the leaf node, or None for non-leaf nodes.
-    def __init__(self, branch_factor: int, value=None):
+    def __init__(
+        self, branch_factor: int, value=None, node_type: NodeType = NodeType.EMPTY
+    ):
         """
         Initializes a verkle node.
         User provides a value if its a leaf node.
@@ -34,7 +57,9 @@ class VerkleNode:
         self.branch_factor = branch_factor
         self.value = value
         self.children = None if (value is not None) else [None] * branch_factor
-        self.commitment = None
+        self.node_type = node_type
+        # Omar you fucking retard, set the commitment to the identity element
+        self.commitment = blst.G1().mult(0)
 
 
 class VerkleTree:
@@ -65,11 +90,11 @@ class VerkleTree:
         # descend and allocate internal nodes
         for i in path[:-1]:
             if node.children[i] is None:
-                node.children[i] = VerkleNode(self.b)
+                node.children[i] = VerkleNode(self.branch_factor)
             node = node.children[i]
         # final slot becomes leaf
         leaf_index = path[-1]
-        node.children[leaf_index] = VerkleNode(self.b, is_leaf=True)
+        node.children[leaf_index] = VerkleNode(self.branch_factor, NodeType.LEAF)
         node.children[leaf_index].value = value
         # recompute all commitments
         self.recommit(self.root)
@@ -80,7 +105,8 @@ class VerkleTree:
         while key > 0:
             path.append(key % self.branch_factor)
             key //= self.branch_factor
-        return path.reverse()
+        path.reverse()
+        return path
 
     def recommit(self, node: VerkleNode):
         """Recomputes the commitment for the given node and all its children. (Post-order)"""
