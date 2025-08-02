@@ -79,6 +79,8 @@ class VerkleTree:
             pow(self.ROOT_OF_UNITY, i, self.MODULUS) for i in range(self.WIDTH)
         ]
         self.branch_factor = branch_factor
+        # one SRS for all nodes
+        self.srs = generate_setup(branch_factor)
         # making an empty node
         self.root = VerkleNode(branch_factor)
 
@@ -131,7 +133,30 @@ class VerkleTree:
         return self.root.commitment
 
     def prove(self, key: int):
-        pass
+        path = self._key_path(key)
+        node = self.root
+        proof = []
+        for idx in path:
+            # build node's polynomial
+            poly = []
+            for child in node.children:
+                if child is None:
+                    poly.append(0)
+                elif child.children is None:
+                    poly.append(child.value % curve.curve_order)
+                else:
+                    poly.append(hash_point_to_field(child.commitment))
+            # open at index idx
+            v, pi = open_poly(poly, idx, self.srs)
+            proof.append({"C": node.commitment, "i": idx, "v": v, "pi": pi})
+            # descend
+            nxt = node.children[idx]
+            if nxt is None:
+                raise KeyError(f"No entry for key {key}")
+            if nxt.children is None:
+                break
+            node = nxt
+        return proof
 
     @staticmethod
     # TODO: Joules
