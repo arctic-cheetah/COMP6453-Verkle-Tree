@@ -134,8 +134,10 @@ def update_verkle_node(root, key, value):
         path.append((index, current_node))
         if index in current_node:
             if current_node[index]["node_type"] == "leaf":
+                # If u found a leaf, then update it
                 old_node = current_node[index]
                 if current_node[index]["key"] == key:
+                    # Update the value and it's hash!
                     current_node[index] = new_node
                     value_change = (
                         MODULUS
@@ -144,10 +146,13 @@ def update_verkle_node(root, key, value):
                     ) % MODULUS
                     break
                 else:
+                    # This case represents splitting the node
                     new_inner_node = {"node_type": "inner"}
                     new_index = next(indices)
                     old_index = get_verkle_indices(old_node["key"])[len(path)]
                     # TODO! Handle old_index == new_index
+                    # Update occurs here
+                    # HOLY SHIT WE ARE SPLITTING THE NODE
                     assert old_index != new_index
                     new_inner_node[new_index] = new_node
                     new_inner_node[old_index] = old_node
@@ -161,6 +166,7 @@ def update_verkle_node(root, key, value):
                     break
             current_node = current_node[index]
         else:
+            # add the new leaf node! and update the hash/commits
             current_node[index] = new_node
             value_change = int.from_bytes(new_node["hash"], "little") % MODULUS
             break
@@ -252,6 +258,7 @@ def add_node_hash(node):
         for i in range(WIDTH):
             if i in node:
                 if "hash" not in node[i]:
+                    # Recurse below until we reach the leaf node
                     add_node_hash(node[i])
                 values[i] = int.from_bytes(node[i]["hash"], "little")
         commitment = kzg_utils.compute_commitment_lagrange(values)
