@@ -10,6 +10,27 @@ import blst
 import hashlib
 from typing import *
 
+"""
+A hash function for bytes, integers and blst.P1 objects.
+If the input is a list, then hash each element and concatenate the results"""
+
+
+def hash(x):
+    if isinstance(x, bytes):
+        return hashlib.sha256(x).digest()
+    elif isinstance(x, blst.P1):
+        return hash(x.compress())
+    b = b""
+    for a in x:
+        if isinstance(a, bytes):
+            b += a
+        elif isinstance(a, int):
+            b += a.to_bytes(32, "little")
+        elif isinstance(a, blst.P1):
+            b += hash(a.compress())
+    return hash(b)
+
+
 # Commitment is 256 bits
 
 # websites
@@ -35,37 +56,11 @@ class NodeType(Enum):
     LEAF = 2
 
 
-# Use KZG settings as seen in verkle_trie
-class VerkleNode:
-    node_type: NodeType = NodeType.EMPTY
-    children: List["VerkleNode"] = []
-    commitment = blst.G1().mult(0)
-    value = -1
-
-    # Empty || Leaf(Key, Value) || Node(Commitment, Children)
-    # Commitment is a polynomial commitment to the values in the children nodes.
-    # Children is a list of verkleNode objects.
-    # Value is the value at the leaf node, or None for non-leaf nodes.
-    def __init__(
-        self, branch_factor: int, value=None, node_type: NodeType = NodeType.EMPTY
-    ):
-        """
-        Initializes a verkle node.
-        User provides a value if its a leaf node.
-        If value is None, it is a non-leaf node and children will be initialized.
-        """
-        self.branch_factor = branch_factor
-        self.value = value
-        self.children = None if (value is not None) else [None] * branch_factor
-        self.node_type = node_type
-        # Omar you fucking retard, set the commitment to the identity element
-        self.commitment = blst.G1().mult(0)
-
-
 class VerkleTree:
     # Verkle Trie parameters kept the same as Ethereum's implementation
     KEY_LEN = 256
-    WIDTH = 16
+    WIDTH_BITS = 8
+    WIDTH = 2**WIDTH_BITS
     PRIMITIVE_ROOT = 7
     MODULUS = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
     primefield = PrimeField(MODULUS)
@@ -85,21 +80,42 @@ class VerkleTree:
         self.root = VerkleNode(branch_factor)
 
     # Insert function acts as a prover according to video.
-
+    # TODO: For ffs omar key is a byte!
     def insert(self, key: int, value: int):
+        """ """
         node = self.root
         path = self.key_path(key)
+        newNode = VerkleNode(self.branch_factor, NodeType.LEAF)
         # descend and allocate internal nodes
         for i in path[:-1]:
             if node.children[i] is None:
-                node.children[i] = VerkleNode(self.branch_factor)
+                node.children[i] = newNode
             node = node.children[i]
+        # final slot becomes leaf
+        leaf_index = path[-1]
+        node.children[leaf_index]
+        node.children[leaf_index].value = value
+        # recompute all commitments
+        self.recommit(self.root)
+
+    """
+    Update or insert node and update all commitments and hashes
+    """
+
+    def insert_update_node(self, key: bytes, value: bytes):
+        node = self.root
+        path = self.key_path(key)
+        # descend and allocate internal nodes
+        while True:
+            # TODO: finish off
+            pass
         # final slot becomes leaf
         leaf_index = path[-1]
         node.children[leaf_index] = VerkleNode(self.branch_factor, NodeType.LEAF)
         node.children[leaf_index].value = value
         # recompute all commitments
         self.recommit(self.root)
+        pass
 
     def key_path(self, key: int):
         """Returns the path to the key in the verkle tree."""
@@ -110,7 +126,7 @@ class VerkleTree:
         path.reverse()
         return path
 
-    def recommit(self, node: VerkleNode):
+    def recommit(self, node: "VerkleNode"):
         """Recomputes the commitment for the given node and all its children. (Post-order)"""
         if node.children is None:
             return
@@ -163,6 +179,33 @@ class VerkleTree:
     # TODO: WARNING BECAREFUL IF BUG OCCCURS
     def verify(self, key: int, value: int, proof):
         pass
+
+
+# Use KZG settings as seen in verkle_trie
+class VerkleNode:
+    node_type: NodeType = NodeType.EMPTY
+    children: List["VerkleNode"] = [] * VerkleTree.KEY_LEN
+    commitment = blst.G1().mult(0)
+    value = -1
+
+    # Empty || Leaf(Key, Value) || Node(Commitment, Children)
+    # Commitment is a polynomial commitment to the values in the children nodes.
+    # Children is a list of verkleNode objects.
+    # Value is the value at the leaf node, or None for non-leaf nodes.
+    def __init__(
+        self, branch_factor: int, value=None, node_type: NodeType = NodeType.EMPTY
+    ):
+        """
+        Initializes a verkle node.
+        User provides a value if its a leaf node.
+        If value is None, it is a non-leaf node and children will be initialized.
+        """
+        self.branch_factor = branch_factor
+        self.value = value
+        self.children = None if (value is not None) else [None] * branch_factor
+        self.node_type = node_type
+        # Omar you fucking retard, set the commitment to the identity element
+        self.commitment = blst.G1().mult(0)
 
 
 # KZG Commitment (https://raw.githubusercontent.com/giuliop/plonk/main/kzg.py)
