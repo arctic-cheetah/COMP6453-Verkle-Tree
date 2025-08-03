@@ -3,6 +3,7 @@ from hashlib import sha256
 import hashlib, secrets, sympy
 from py_ecc.optimized_bls12_381 import optimized_curve as curve, pairing
 from verkle_trie.kzg_utils import KzgUtils
+import kzg_utils
 from fft import fft
 from poly_utils import PrimeField
 import pippenger
@@ -11,15 +12,31 @@ import hashlib
 from typing import *
 
 
+def generate_setup(size, secret) -> Dict[str, List[blst.P1 | blst.P2]]:
+    """
+    Using the default setup from ethereum
+    Generates a setup in the G1 group and G2 group,
+    Where G1 is the polynomial commitment group and G2 is the pairing group
+    as well as the Lagrange polynomials in G1 (via FFT)
+    """
+    g1_setup = [blst.G1().mult(pow(secret, i, MODULUS)) for i in range(size)]
+    g2_setup = [blst.G2().mult(pow(secret, i, MODULUS)) for i in range(size)]
+    g1_lagrange = fft(g1_setup, MODULUS, ROOT_OF_UNITY, inv=True)
+    return {"g1": g1_setup, "g2": g2_setup, "g1_lagrange": g1_lagrange}
+
+
+SECRET = 8927347823478352432985
+DOMAIN = []
 KEY_LEN = 256
 WIDTH_BITS = 8
 WIDTH = 2**WIDTH_BITS
 PRIMITIVE_ROOT = 7
 MODULUS = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
 primefield = PrimeField(MODULUS)
-
 ROOT_OF_UNITY = pow(PRIMITIVE_ROOT, (MODULUS - 1) // WIDTH, MODULUS)
-DOMAIN = []
+SETUP = generate_setup(WIDTH, SECRET)
+kzg_utils = KzgUtils(MODULUS, WIDTH, DOMAIN, SETUP, primefield)
+
 
 """
 A hash function for bytes, integers and blst.P1 objects.
@@ -120,7 +137,7 @@ class VerkleTree:
         newNode = VerkleNode(self.branch_factor, value, key, NodeType.LEAF)
         # descend and allocate internal nodes
         index = path.pop(0)
-        valueChange : int = -1 
+        valueChange: int = -1
 
         while True:
             # TODO: finish off
@@ -135,9 +152,8 @@ class VerkleTree:
                         pass
                     # 2) No, Then split the node
                     else:
-                        # Make a new inner node and place the old and new leaf under the 
-                    #
-                    pass
+                        # Make a new inner node and place the old and new leaf under the
+                        pass
 
                 node = node.children[index]
             else:
@@ -228,7 +244,7 @@ class VerkleTree:
 
 # Use KZG settings as seen in verkle_trie
 class VerkleNode:
-    node_type: NodeType = NodeType.EMPTY
+    type: NodeType = NodeType.EMPTY
     children: List["VerkleNode" | None] = [None] * VerkleTree.KEY_LEN
     commitment = blst.G1().mult(0)
     value: bytes = b""
@@ -309,11 +325,27 @@ def commit(poly, h):
     return com_f
 
 
+def add_node_hash(node: VerkleNode):
+    """
+    Recursively adds all missing commitments and hashes to a verkle trie structure.
+    """
+    if node["node_type"] == "leaf":
+        node["hash"] = hash([node["key"], node["value"]])
+    if node["node_type"] == "inner":
+        lagrange_polynomials = []
+        values = {}
+        for i in range(WIDTH):
+            if i in node:
+                if "hash" not in node[i]:
+                    # Recurse below until we reach the leaf node
+                    add_node_hash(node[i])
+                values[i] = int.from_bytes(node[i]["hash"], "little")
+        commitment = kzg_utils.compute_commitment_lagrange(values)
+        node["commitment"] = commitment
+        node["hash"] = hash(commitment.compress())
+
+
 def generate_setup(s):
-    pass
-
-
-def hash(x):
     pass
 
 
