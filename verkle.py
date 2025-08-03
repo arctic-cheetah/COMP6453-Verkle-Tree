@@ -141,7 +141,6 @@ class VerkleTree:
         while True:
             index = indices.pop(0)
             path.append((index, node))
-            # TODO: finish off
             if node.children[index] is not None:
                 # Check if leafnode
                 if node.children[index].node_type == NodeType.LEAF:
@@ -190,7 +189,7 @@ class VerkleTree:
                 # Just insert at the inner node location
 
             break
-        # TODO Updates all the parent commits along the path
+        # DONE: Updates all the parent commits along the path
         for index, currNode in reversed(path):
             currNode.commitment.add(
                 SETUP["g1_langrange"][index].dup().mult(valueChange)
@@ -198,7 +197,7 @@ class VerkleTree:
             oldHash = node.hash
             newHash = hash(currNode.commitment)
             node.hash = newHash
-            value_change = (
+            valueChange = (
                 MODULUS
                 + int.from_bytes(newHash, "little")
                 - int.from_bytes(oldHash, "little")
@@ -208,6 +207,7 @@ class VerkleTree:
         """
         Generates the list of verkle indices for key
         """
+        # TODO: Possible bug here! WHY SHOULD IT BE BIG ENDIAN
         x = int.from_bytes(key, "big")
         last_index_bits = KEY_LEN % WIDTH_BITS
         index = (x % (2**last_index_bits)) << (WIDTH_BITS - last_index_bits)
