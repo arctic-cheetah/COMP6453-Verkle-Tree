@@ -249,6 +249,7 @@ class VerkleNode:
     commitment = blst.G1().mult(0)
     value: bytes = b""
     key: bytes = b""
+    hash: bytes = b""
 
     # Empty || Leaf(Key, Value) || Node(Commitment, Children)
     # Commitment is a polynomial commitment to the values in the children nodes.
@@ -301,6 +302,7 @@ assert q_1 == curve.curve_order - 1
 """Code from giuliop/plonk"""
 
 
+# Fk this shit omar
 def commit(poly, h):
     """
     Commit to a polynomial.
@@ -325,24 +327,25 @@ def commit(poly, h):
     return com_f
 
 
+# Use this
 def add_node_hash(node: VerkleNode):
     """
+    DONE:
     Recursively adds all missing commitments and hashes to a verkle trie structure.
     """
-    if node["node_type"] == "leaf":
-        node["hash"] = hash([node["key"], node["value"]])
-    if node["node_type"] == "inner":
-        lagrange_polynomials = []
+    if node.node_type == NodeType.LEAF:
+        node.hash = hash([node.key, node.value])
+    if node.node_type == NodeType.INNER:
         values = {}
         for i in range(WIDTH):
             if i in node:
                 if "hash" not in node[i]:
                     # Recurse below until we reach the leaf node
                     add_node_hash(node[i])
-                values[i] = int.from_bytes(node[i]["hash"], "little")
+                values[i] = int.from_bytes(node.children[i].hash, "little")
         commitment = kzg_utils.compute_commitment_lagrange(values)
-        node["commitment"] = commitment
-        node["hash"] = hash(commitment.compress())
+        node.commitment = commitment
+        node.hash = hash(commitment.compress())
 
 
 def generate_setup(s):
