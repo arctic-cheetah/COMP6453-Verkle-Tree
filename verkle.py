@@ -10,6 +10,17 @@ import blst
 import hashlib
 from typing import *
 
+
+KEY_LEN = 256
+WIDTH_BITS = 8
+WIDTH = 2**WIDTH_BITS
+PRIMITIVE_ROOT = 7
+MODULUS = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
+primefield = PrimeField(MODULUS)
+
+ROOT_OF_UNITY = pow(PRIMITIVE_ROOT, (MODULUS - 1) // WIDTH, MODULUS)
+DOMAIN = []
+
 """
 A hash function for bytes, integers and blst.P1 objects.
 If the input is a list, then hash each element and concatenate the results"""
@@ -64,7 +75,7 @@ class VerkleTree:
     PRIMITIVE_ROOT = 7
     MODULUS = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
     primefield = PrimeField(MODULUS)
-
+    branch_factor = -1
     ROOT_OF_UNITY = pow(PRIMITIVE_ROOT, (MODULUS - 1) // WIDTH, MODULUS)
     DOMAIN = []
 
@@ -73,7 +84,7 @@ class VerkleTree:
         self.DOMAIN = [
             pow(self.ROOT_OF_UNITY, i, self.MODULUS) for i in range(self.WIDTH)
         ]
-        self.branch_factor = branch_factor
+        self.branch_factor = KEY_LEN // WIDTH_BITS
         # one SRS for all nodes
         self.srs = generate_setup(branch_factor)
         # making an empty node
@@ -81,6 +92,7 @@ class VerkleTree:
 
     # Insert function acts as a prover according to video.
     # TODO: For ffs omar key is a byte!
+    # TODO: OMAR Fuck your code,
     def insert(self, key: int, value: int):
         """ """
         node = self.root
@@ -104,27 +116,60 @@ class VerkleTree:
 
     def insert_update_node(self, key: bytes, value: bytes):
         node = self.root
-        path = self.key_path(key)
+        path = self.get_verkle_indices(key)
+        newNode = VerkleNode(self.branch_factor, value, key, NodeType.LEAF)
         # descend and allocate internal nodes
+        index = path.pop(0)
+        valueChange : int = -1 
+
         while True:
             # TODO: finish off
-            pass
+            if node.children[index] is not None:
+                # Check if leafnode
+                if node.children[index].node_type == NodeType.LEAF:
+                    # Perform cases:
+                    # 1) Does the keymatch? Yes
+                    if node.children[index].key == key:
+                        # Update value and hash
+                        node.children[index] = newNode
+                        pass
+                    # 2) No, Then split the node
+                    else:
+                        # Make a new inner node and place the old and new leaf under the 
+                    #
+                    pass
+
+                node = node.children[index]
+            else:
+                # It is an inner node so just add it
+                node.children[index] = newNode
+                # TODO: update hash
+                break
+                # Just insert at the inner node location
+
+            break
         # final slot becomes leaf
         leaf_index = path[-1]
-        node.children[leaf_index] = VerkleNode(self.branch_factor, NodeType.LEAF)
+        node.children[leaf_index] = newNode
         node.children[leaf_index].value = value
         # recompute all commitments
         self.recommit(self.root)
         pass
 
-    def key_path(self, key: int):
-        """Returns the path to the key in the verkle tree."""
-        path = []
-        while key > 0:
-            path.append(key % self.branch_factor)
-            key //= self.branch_factor
-        path.reverse()
-        return path
+    def get_verkle_indices(self, key: bytes) -> Tuple[int]:
+        """
+        Generates the list of verkle indices for key
+        """
+        x = int.from_bytes(key, "big")
+        last_index_bits = KEY_LEN % WIDTH_BITS
+        index = (x % (2**last_index_bits)) << (WIDTH_BITS - last_index_bits)
+        x //= 2**last_index_bits
+        indices = [index]
+        for i in range((KEY_LEN - 1) // WIDTH_BITS):
+            index = x % WIDTH
+            x //= WIDTH
+            indices.append(index)
+        return tuple(reversed(indices))
 
     def recommit(self, node: "VerkleNode"):
         """Recomputes the commitment for the given node and all its children. (Post-order)"""
@@ -184,22 +229,28 @@ class VerkleTree:
 # Use KZG settings as seen in verkle_trie
 class VerkleNode:
     node_type: NodeType = NodeType.EMPTY
-    children: List["VerkleNode"] = [] * VerkleTree.KEY_LEN
+    children: List["VerkleNode" | None] = [None] * VerkleTree.KEY_LEN
     commitment = blst.G1().mult(0)
-    value = -1
+    value: bytes = b""
+    key: bytes = b""
 
     # Empty || Leaf(Key, Value) || Node(Commitment, Children)
     # Commitment is a polynomial commitment to the values in the children nodes.
     # Children is a list of verkleNode objects.
     # Value is the value at the leaf node, or None for non-leaf nodes.
     def __init__(
-        self, branch_factor: int, value=None, node_type: NodeType = NodeType.EMPTY
+        self,
+        branch_factor: int,
+        value: bytes = None,
+        key: bytes = None,
+        node_type: NodeType = NodeType.EMPTY,
     ):
         """
         Initializes a verkle node.
         User provides a value if its a leaf node.
         If value is None, it is a non-leaf node and children will be initialized.
         """
+        self.key = key
         self.branch_factor = branch_factor
         self.value = value
         self.children = None if (value is not None) else [None] * branch_factor
