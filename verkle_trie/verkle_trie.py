@@ -164,6 +164,8 @@ def update_verkle_node(root, key, value):
                         - int.from_bytes(old_node["hash"], "little")
                     ) % MODULUS
                     break
+                # How is it that u can descend the tree by just indexing the dict?
+                # Because each node is a dict mapping indices to child nodes?
             current_node = current_node[index]
         else:
             # add the new leaf node! and update the hash/commits
