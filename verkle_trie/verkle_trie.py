@@ -164,6 +164,8 @@ def update_verkle_node(root, key, value):
                         - int.from_bytes(old_node["hash"], "little")
                     ) % MODULUS
                     break
+                # How is it that u can descend the tree by just indexing the dict?
+                # Because each node is a dict mapping indices to child nodes?
             current_node = current_node[index]
         else:
             # add the new leaf node! and update the hash/commits
@@ -582,6 +584,7 @@ def check_verkle_proof(trie, keys, values, proof, display_times=True):
         y,
         sigma_serialized,
     ) = proof
+
     commitments_sorted_by_index = [blst.P1(trie)] + [
         blst.P1(x) for x in commitments_sorted_by_index_serialized
     ]
@@ -690,7 +693,7 @@ if __name__ == "__main__":
     print("Computed verkle root in {0:.3f} s".format(time_b - time_a), file=sys.stderr)
 
     if NUMBER_ADDED_KEYS > 0:
-
+        # Not needed!
         time_a = time()
         check_valid_tree(root)
         time_b = time()
