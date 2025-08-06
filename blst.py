@@ -18,7 +18,7 @@ else:
 try:
     import builtins as __builtin__
 except ImportError:
-    import __builtin__
+    import __builtin__s
 
 _swig_new_instance_method = _blst.SWIG_PyInstanceMethod_New
 _swig_new_static_method = _blst.SWIG_PyStaticMethod_New
