@@ -1,1 +1,3 @@
 ./research/*
+./venv
+./__pycache__

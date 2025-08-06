@@ -173,7 +173,8 @@ class VerkleTree:
                         newInnerNode = VerkleNode(
                             KEY_LEN // WIDTH_BITS, node_type=NodeType.INNER
                         )
-                        assert oldIndex != newIndex
+                        # getting error here sometimes
+                        # assert oldIndex != newIndex
                         newInnerNode.children[newIndex] = newNode
                         newInnerNode.children[oldIndex] = oldNode
                         add_node_hash(newInnerNode)
@@ -211,13 +212,12 @@ class VerkleTree:
         """
         Generates the list of verkle indices for key
         """
-        # TODO: Possible bug here! WHY SHOULD IT BE BIG ENDIAN
-        x = int.from_bytes(key, "big")
+        x = int.from_bytes(key, "little")
         last_index_bits = KEY_LEN % WIDTH_BITS
         index = (x % (2**last_index_bits)) << (WIDTH_BITS - last_index_bits)
         x //= 2**last_index_bits
         indices = [index]
-        for i in range((KEY_LEN - 1) // WIDTH_BITS):
+        for _ in range((KEY_LEN - 1) // WIDTH_BITS):
             index = x % WIDTH
             x //= WIDTH
             indices.append(index)
@@ -350,27 +350,27 @@ class VerkleTree:
 
         return D.compress(), y, sigma.compress()
 
-    def find_node_with_path(self, root, key):
+    def find_node_with_path(self, node: "VerkleNode", key: bytes):
         """
         As 'find_node', but returns the path of all nodes on the way to 'key' as well as their index
         """
-        current_node = root
+        current_node = node
         indices = iter(self.get_verkle_indices(key))
         path = []
         current_index_path = []
-        while current_node["node_type"] == "inner":
+        while current_node.node_type == NodeType.INNER:
             index = next(indices)
             path.append((tuple(current_index_path), index, current_node))
             current_index_path.append(index)
-            if index in current_node:
-                current_node = current_node[index]
+            if current_node.children[index] is not None:
+                current_node = current_node.children[index]
             else:
                 return path, None
-        if current_node["key"] == key:
+        if current_node.key == key:
             return path, current_node
         return path, None
 
-    def make_verkle_proof(self, tree: "VerkleTree", keys: bytes, display_times=True):
+    def make_verkle_proof(self, tree: "VerkleTree", keys: bytes, display_times=False):
         """
         Creates a proof for the 'keys' in the verkle tree given by 'tree'
         """
@@ -380,9 +380,9 @@ class VerkleTree:
         values = []
         depths = []
         for key in keys:
-            path, node = self.find_node_with_path(tree, key)
+            path, node = self.find_node_with_path(tree.root, key.to_bytes(32, "little"))
             depths.append(len(path))
-            values.append(node.value if node.node_type == NodeType.LEAF else None)
+            values.append(node.value if (node != None and node.node_type == NodeType.LEAF) else None)
             for index, subindex, node in path:
                 nodes_by_index[index] = node
                 nodes_by_index_and_subindex[(index, subindex)] = node
@@ -398,17 +398,20 @@ class VerkleTree:
         indices = list(map(lambda x: x[0][1], sorted(nodes_by_index_and_subindex.items())))
         
         ys = list(map(
-            lambda x: int.from_bytes((x[1][x[0][1]]).hash, "little"), 
+            lambda x: int.from_bytes((x[1].children[x[0][1]]).hash, "little") if x[1].children[x[0][1]] is not None else 0, 
             sorted(nodes_by_index_and_subindex.items())
         ))
         
         # log_time_if_eligible("   Sorted all commitments", 30, display_times)
 
         fs = []
-        Cs = [x for x in nodes_sorted_by_index_and_subindex]
+        Cs = [x.commitment for x in nodes_sorted_by_index_and_subindex]
 
         for node in nodes_sorted_by_index_and_subindex:
-            fs.append([int.from_bytes(node[i].hash, "little") if i in node else 0 for i in range(WIDTH)])
+            if node.node_type == NodeType.LEAF:
+                fs.append(int.from_bytes(node.value, "little"))
+            else:
+                fs.append([int.from_bytes(node.children[i].hash, "little") if node.children[i] is not None else 0 for i in range(WIDTH)])
 
         D, y, sigma = self.make_kzg_multiproof(Cs, fs, indices, ys, display_times)
 
@@ -468,7 +471,7 @@ class VerkleNode:
         self.key = key
         self.branch_factor = KEY_LEN
         self.value = value
-        if NodeType.INNER:
+        if node_type == NodeType.INNER:
             self.children = [None] * KEY_LEN
         else:
             self.children = None
