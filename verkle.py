@@ -421,8 +421,6 @@ class VerkleTree:
         return depths, commitments_sorted_by_index_serialized, D, y, sigma
 
     @staticmethod
-    # TODO: Joules
-    # TODO: WARNING BECAREFUL IF BUG OCCCURS
     def verify(self, key: int, value: int, proof):
         pass
 

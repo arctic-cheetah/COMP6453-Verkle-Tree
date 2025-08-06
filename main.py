@@ -4,6 +4,7 @@ from verkle import *
 
 NUMBER_INITIAL_KEYS = 2**15
 NUMBER_ADDED_KEYS = 512
+# Testing umbers below
 # NUMBER_INITIAL_KEYS = 10
 # NUMBER_ADDED_KEYS = 10
 
@@ -32,7 +33,7 @@ def main():
 
     # Verify the proof
 
-    
+
     # # Binary verkle tree (branching 2)
     # tree1 = verkle.VerkleTree(2)
     # # key 5 in base-2 is [1, 0, 1]
