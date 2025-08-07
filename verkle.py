@@ -62,6 +62,11 @@ def hash(x):
     return hash(b)
 
 
+# helper function
+def hash_to_int(data):
+    return int.from_bytes(hash(data), "little")
+
+
 # Commitment is 256 bits
 
 # websites
@@ -101,6 +106,10 @@ class Proof:
         self.polySerialised = polySerialised
         self.challenge = challenge
         self.compressedMultiProof = compressedMultiProof
+
+    def __str__(self):
+        string = f"===Proof===\n\tDepths: {self.depths}\n\tCommitsSortedByIndex: {self.commitsSortedByIndex[]}"
+        return "Printing proofs"
 
 
 class NodeType(Enum):
@@ -273,7 +282,7 @@ class VerkleTree:
     def root_commit(self):
         return self.root.commitment
 
-    def check_kzg_multiproof(self, Cs, indices, ys, proof, display_times=True):
+    def check_kzg_multiproof(self, Cs, indices, ys, proof, display_times=False):
         """
         Verifies a KZG multiproof according to the schema described here:
         https://dankradfeist.de/ethereum/2021/06/18/pcs-multiproofs.html
@@ -509,7 +518,7 @@ class VerkleTree:
         keys: List[bytes],
         values: List[bytes],
         proof: Proof,
-        displayTime: bool,
+        displayTime: bool = False,
     ):
         # Reconstruct commitments list
         commitSortByIndex = [blst.P1(rootCommit)] + [

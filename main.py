@@ -11,30 +11,31 @@ NUMBER_KEYS_PROOF = 5000
 
 
 def main():
-    root = VerkleTree()
+    tree = VerkleTree()
     values = {}
     keys = []
     upper_limit = 2**256 - 1
     for _ in range(NUMBER_INITIAL_KEYS):
         key = randint(0, upper_limit).to_bytes(32, "little")
         value = randint(0, upper_limit).to_bytes(32, "little")
-        root.insert(key, value)
+        tree.insert(key, value)
         values[key] = value
         keys.append(key)
 
     key_list = []
-    for i in range(NUMBER_ADDED_KEYS):
+    for _ in range(NUMBER_ADDED_KEYS):
         key = randint(0, upper_limit).to_bytes(32, "little")
         key_list.append(key)
         value = randint(0, upper_limit).to_bytes(32, "little")
-        root.insert_update_node(key, value)
+        tree.insert_update_node(key, value)
         values[key] = value
 
-    proof = root.make_verkle_proof(root, [key_list[0]])
+    # We compute 5000 proof for 5000 keys
+    proof = tree.make_verkle_proof(tree, [key_list[0]])
     print("The proof formed-" + "\n" + f"{proof}")
     print("done Starting big work")
     time_a = time()
-    proof = root.make_verkle_proof(root, keys[:NUMBER_KEYS_PROOF])
+    proof = tree.make_verkle_proof(tree, keys[:NUMBER_KEYS_PROOF])
     time_b = time()
     print(
         "Computed proof for {0} keys (size = {1} bytes) in {2:.3f} s".format(
@@ -42,7 +43,17 @@ def main():
         )
     )
 
+    print(proof)
+
     # Verify the proof
+    res = tree.check_verkle_proof(
+        tree.root.commitment.compress(),
+        keys,
+        [values[k] for k in keys[:NUMBER_KEYS_PROOF]],
+        proof,
+        False,
+    )
+    print("Success " + str(res))
 
     # # Binary verkle tree (branching 2)
     # tree1 = verkle.VerkleTree(2)
