@@ -575,7 +575,7 @@ def check_verkle_proof(trie, keys, values, proof, display_times=True):
     """
 
     start_logging_time_if_eligible("   Starting proof check", display_times)
-
+    # Number of keys = num of leaf nodes
     # Unpack the proof
     (
         depths,
@@ -594,7 +594,10 @@ def check_verkle_proof(trie, keys, values, proof, display_times=True):
 
     leaf_values_by_index_and_subindex = {}
 
+    # TODO:
     # Find all required indices
+    # wtf indicies and subindicies are deep! The recursive
+    # structure could be a slowdown!
     for key, value, depth in zip(keys, values, depths):
         verkle_indices = get_verkle_indices(key)
         for i in range(depth):

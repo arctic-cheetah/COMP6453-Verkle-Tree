@@ -1,4 +1,3 @@
-import verkle
 from random import randint
 from verkle import *
 

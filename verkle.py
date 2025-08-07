@@ -61,6 +61,7 @@ def hash(x):
             b += hash(a.compress())
     return hash(b)
 
+
 # Commitment is 256 bits
 
 # websites
@@ -73,6 +74,33 @@ def hash(x):
     - Verkle tree data structure
     - Prove and verify functions
 """
+
+"""
+Store ur proofs here
+"""
+
+
+class Proof:
+    depths: List[bytes] = []
+    commitsSortedByIndex: List[bytes] = []
+    polySerialised: bytes = b""
+    # challenge represents the y value for the KZG polynomial
+    challenge: bytes = b""
+    compressedMultiProof: bytes = b""
+
+    def __init__(
+        self,
+        depths: List[bytes],
+        commitsSortedByIndex: List[bytes],
+        polySerialised: bytes,
+        challenge: bytes,
+        compressedMultiProof: bytes,
+    ):
+        self.depths = depths
+        self.commitsSortedByIndex = commitsSortedByIndex
+        self.polySerialised = polySerialised
+        self.challenge = challenge
+        self.compressedMultiProof = compressedMultiProof
 
 
 class NodeType(Enum):
@@ -115,7 +143,7 @@ class VerkleTree:
         Insert without updating the hashes/commmits/ this is to allow us to build a full trie
         """
         currNode = self.root
-        indices = iter(self.get_verkle_indices(key))
+        indices = iter(self.get_verkleIndex(key))
         currIndex = None
         while currNode.node_type == NodeType.INNER:
             prevNode = currNode
@@ -139,7 +167,7 @@ class VerkleTree:
 
     def insert_update_node(self, key: bytes, value: bytes):
         node = self.root
-        indices = iter(self.get_verkle_indices(key))
+        indices = iter(self.get_verkleIndex(key))
         newNode = VerkleNode(self.branch_factor, value, key, NodeType.LEAF)
         # descend and allocate internal nodes
         valueChange: int = -1
@@ -169,7 +197,7 @@ class VerkleTree:
                     # 2) No, Then split the node
                     else:
                         newIndex = next(indices)
-                        oldIndex = self.get_verkle_indices(oldNode.key)[len(path)]
+                        oldIndex = self.get_verkleIndex(oldNode.key)[len(path)]
                         newInnerNode = VerkleNode(
                             KEY_LEN // WIDTH_BITS, node_type=NodeType.INNER
                         )
@@ -184,7 +212,7 @@ class VerkleTree:
                             + int.from_bytes(newInnerNode.hash, "little")
                             - int.from_bytes(oldNode.hash, "little")
                         ) % MODULUS
-                        # newIndex = self.get_verkle_indices(oldNode
+                        # newIndex = self.get_verkleIndex(oldNode
                         # Make a new inner node and place the old and new leaf under the
                         break
 
@@ -208,7 +236,7 @@ class VerkleTree:
                 - int.from_bytes(oldHash, "little")
             ) % MODULUS
 
-    def get_verkle_indices(self, key: bytes) -> Tuple[int]:
+    def get_verkleIndex(self, key: bytes) -> Tuple[int]:
         """
         Generates the list of verkle indices for key
         """
@@ -244,7 +272,7 @@ class VerkleTree:
 
     def root_commit(self):
         return self.root.commitment
-    
+
     def check_kzg_multiproof(self, Cs, indices, ys, proof, display_times=True):
         """
         Verifies a KZG multiproof according to the schema described here:
@@ -255,10 +283,15 @@ class VerkleTree:
         sigma = blst.P1(sigma_serialized)
 
         # Step 1
-        r = hash_to_int([hash(C) for C in Cs] + ys + [kzg_utils.DOMAIN[i] for i in indices]) % MODULUS
+        r = (
+            hash_to_int(
+                [hash(C) for C in Cs] + ys + [kzg_utils.DOMAIN[i] for i in indices]
+            )
+            % MODULUS
+        )
 
         # log_time_if_eligible("   Computed r hash", 30, display_times)
-        
+
         # Step 2
         t = hash_to_int([r, D])
         E_coefficients = []
@@ -269,27 +302,32 @@ class VerkleTree:
             E_coefficient = primefield.div(power_of_r, t - DOMAIN[index])
             E_coefficients.append(E_coefficient)
             g_2_of_t += E_coefficient * y % MODULUS
-                
+
             power_of_r = power_of_r * r % MODULUS
 
         # log_time_if_eligible("   Computed g2 and e coeffs", 30, display_times)
-        
+
         E = pippenger.pippenger_simple(Cs, E_coefficients)
 
-        # log_time_if_eligible("   Computed E commitment", 30, display_times)
+        # log_time_if_eligible("  Computed E commitment", 30, display_times)
 
         # Step 3 (Check KZG proofs)
         w = (y - g_2_of_t) % MODULUS
 
         q = hash_to_int([E, D, y, w])
 
-        if not kzg_utils.check_kzg_proof(E.dup().add(D.dup().mult(q)), t, y + q * w, sigma):
+        if not kzg_utils.check_kzg_proof(
+            E.dup().add(D.dup().mult(q)), t, y + q * w, sigma
+        ):
             return False
 
         # log_time_if_eligible("   Checked KZG proofs", 30, display_times)
 
         return True
-    
+
+    # TODO:
+    # This function is good!
+    #  This does not need to be optimised? peraps we can use cython
     def make_kzg_multiproof(self, Cs, fs, indices, ys, display_times=True):
         """
         Computes a KZG multiproof according to the schema described here:
@@ -299,7 +337,12 @@ class VerkleTree:
         """
 
         # Step 1: Construct g(X) polynomial in evaluation form
-        r = hash_to_int([hash(C) for C in Cs] + ys + [kzg_utils.DOMAIN[i] for i in indices]) % MODULUS
+        r = (
+            hash_to_int(
+                [hash(C) for C in Cs] + ys + [kzg_utils.DOMAIN[i] for i in indices]
+            )
+            % MODULUS
+        )
 
         # log_time_if_eligible("   Hashed to r", 30, display_times)
 
@@ -319,26 +362,25 @@ class VerkleTree:
         # log_time_if_eligible("   Computed commitment D", 30, display_times)
 
         # Step 2: Compute h in evaluation form
-        
+
         t = hash_to_int([r, D]) % MODULUS
-        
+
         h = [0 for _ in range(WIDTH)]
         power_of_r = 1
-        
+
         for f, index in zip(fs, indices):
             denominator_inv = primefield.inv(t - DOMAIN[index])
             for i in range(WIDTH):
                 h[i] += power_of_r * f[i] * denominator_inv % MODULUS
-                
+
             power_of_r = power_of_r * r % MODULUS
-    
+
         # log_time_if_eligible("   Computed h polynomial", 30, display_times)
 
         # Step 3: Evaluate and compute KZG proofs
 
         y, pi = kzg_utils.evaluate_and_compute_kzg_proof(h, t)
         w, rho = kzg_utils.evaluate_and_compute_kzg_proof(g, t)
-
 
         # Compress both proofs into one
 
@@ -370,59 +412,166 @@ class VerkleTree:
             return path, current_node
         return path, None
 
-    def make_verkle_proof(self, tree: "VerkleTree", keys: bytes, display_times=False):
+    def make_verkle_proof(
+        self, tree: "VerkleTree", keys: bytes, display_times=False
+    ) -> Proof:
         """
         Creates a proof for the 'keys' in the verkle tree given by 'tree'
         """
         # Step 0: Find all keys in the trie
-        nodes_by_index = {}
-        nodes_by_index_and_subindex = {}
-        values = []
-        depths = []
+        #
+        nodesByIndex = {}
+        nodesByIndexSubIndex = {}
+        values: list[bytes] = []
+        depths: list[int] = []
         for key in keys:
             path, node = self.find_node_with_path(tree.root, key.to_bytes(32, "little"))
             depths.append(len(path))
-            values.append(node.value if (node != None and node.node_type == NodeType.LEAF) else None)
+            values.append(
+                node.value
+                if (node != None and node.node_type == NodeType.LEAF)
+                else None
+            )
             for index, subindex, node in path:
-                nodes_by_index[index] = node
-                nodes_by_index_and_subindex[(index, subindex)] = node
+                nodesByIndex[index] = node
+                nodesByIndexSubIndex[(index, subindex)] = node
 
         # log_time_if_eligible("   Computed key paths", 30, display_times)
-        
+
         # All commitments, but without any duplications. These are for sending over the wire as part of the proof
-        nodes_sorted_by_index = list(map(lambda x: x[1], sorted(nodes_by_index.items())))
-        
-        # Nodes sorted 
-        nodes_sorted_by_index_and_subindex = list(map(lambda x: x[1], sorted(nodes_by_index_and_subindex.items())))
-        
-        indices = list(map(lambda x: x[0][1], sorted(nodes_by_index_and_subindex.items())))
-        
-        ys = list(map(
-            lambda x: int.from_bytes((x[1].children[x[0][1]]).hash, "little") if x[1].children[x[0][1]] is not None else 0, 
-            sorted(nodes_by_index_and_subindex.items())
-        ))
-        
+        nodesSortedByIndex = list(map(lambda x: x[1], sorted(nodesByIndex.items())))
+
+        # Nodes sorted
+        nodesSortedByIndexAndSubIndex = list(
+            map(lambda x: x[1], sorted(nodesByIndexSubIndex.items()))
+        )
+
+        indices = list(map(lambda x: x[0][1], sorted(nodesByIndexSubIndex.items())))
+
+        ys = list(
+            map(
+                lambda x: (
+                    int.from_bytes((x[1].children[x[0][1]]).hash, "little")
+                    if x[1].children[x[0][1]] is not None
+                    else 0
+                ),
+                sorted(nodesByIndexSubIndex.items()),
+            )
+        )
+
         # log_time_if_eligible("   Sorted all commitments", 30, display_times)
 
         fs = []
-        Cs = [x.commitment for x in nodes_sorted_by_index_and_subindex]
+        Cs = [x.commitment for x in nodesSortedByIndexAndSubIndex]
 
-        for node in nodes_sorted_by_index_and_subindex:
+        for node in nodesSortedByIndexAndSubIndex:
             if node.node_type == NodeType.LEAF:
                 fs.append(int.from_bytes(node.value, "little"))
             else:
-                fs.append([int.from_bytes(node.children[i].hash, "little") if node.children[i] is not None else 0 for i in range(WIDTH)])
+                fs.append(
+                    [
+                        (
+                            int.from_bytes(node.children[i].hash, "little")
+                            if node.children[i] is not None
+                            else 0
+                        )
+                        for i in range(WIDTH)
+                    ]
+                )
 
-        D, y, sigma = self.make_kzg_multiproof(Cs, fs, indices, ys, display_times)
+        polySerialised, challenge, compressedMultiProof = self.make_kzg_multiproof(
+            Cs, fs, indices, ys, display_times
+        )
 
-        commitments_sorted_by_index_serialized = [x.commitment.compress() for x in nodes_sorted_by_index[1:]]
-        
+        commitsSortedIndexSerialised = [
+            x.commitment.compress() for x in nodesSortedByIndex[1:]
+        ]
+
         # log_time_if_eligible("   Serialized commitments", 30, display_times)
-        return depths, commitments_sorted_by_index_serialized, D, y, sigma
+        proof: Proof = Proof(
+            depths,
+            commitsSortedIndexSerialised,
+            polySerialised,
+            challenge,
+            compressedMultiProof,
+        )
+        return proof
 
-    @staticmethod
-    def verify(self, key: int, value: int, proof):
-        pass
+    # NOTE: decide if class interface for proof should be made YES
+    # Tis function checks for all commits given
+    # If u do one by one then it is not efficient
+    def check_verkle_proof(
+        self,
+        rootCommit: bytes,
+        keys: List[bytes],
+        values: List[bytes],
+        proof: Proof,
+        displayTime: bool,
+    ):
+        # Reconstruct commitments list
+        commitSortByIndex = [blst.P1(rootCommit)] + [
+            blst.P1(c) for c in proof.commitsSortedByIndex
+        ]
+        everyIndices = set()
+        IndicesAndSubIndicies = set()
+        leafValByIndexSubIndex = {}
+
+        # Find all required indices
+        for key, value, depth in zip(keys, values, proof.depths):
+            verkleIndex = self.get_verkleIndex(key)
+            for i in range(depth):
+                everyIndices.add(verkleIndex[:i])
+                IndicesAndSubIndicies.add((verkleIndex[:i], verkleIndex[i]))
+            leafValByIndexSubIndex[
+                (verkleIndex[: depth - 1], verkleIndex[depth - 1])
+            ] = hash([key, value])
+
+        everyIndices = sorted(everyIndices)
+        IndicesAndSubIndicies = sorted(IndicesAndSubIndicies)
+
+        # create the commitment list and sort them by index
+        commitsByIndex = {
+            index: commitment
+            for index, commitment in zip(everyIndices, commitSortByIndex)
+        }
+        commitsByIndexAndSubIndex = {
+            IndexAndSubIndex: commitsByIndex[IndexAndSubIndex[0]]
+            for IndexAndSubIndex in IndicesAndSubIndicies
+        }
+
+        subhashes_by_IndexAndSubIndex = {}
+        for IndexAndSubIndex in IndicesAndSubIndicies:
+            fullSubIndex = IndexAndSubIndex[0] + (IndexAndSubIndex[1],)
+            if fullSubIndex in commitsByIndex:
+                subhashes_by_IndexAndSubIndex[IndexAndSubIndex] = hash(
+                    commitsByIndex[fullSubIndex]
+                )
+            else:
+                subhashes_by_IndexAndSubIndex[IndexAndSubIndex] = (
+                    leafValByIndexSubIndex[IndexAndSubIndex]
+                )
+
+        Cs = [x[1] for x in sorted(commitsByIndexAndSubIndex.items())]
+        indices = [x[1] for x in sorted(IndicesAndSubIndicies)]
+        ys = [
+            int.from_bytes(x[1], "little")
+            for x in sorted(subhashes_by_IndexAndSubIndex.items())
+        ]
+
+        # The actual multiproof check would go here (not implemented)
+        return self.check_kzg_multiproof(
+            Cs,
+            indices,
+            ys,
+            [proof.polySerialised, proof.challenge, proof.compressedMultiProof],
+            displayTime,
+        )
+
+    """
+    Checks Verkle tree proof according to
+    https://notes.ethereum.org/nrQqhVpQRi6acQckwm1Ryg?both
+    """
+
 
 ## A verkle tree is a Merkle tree with polynomial commitments at each node.
 """
@@ -430,6 +579,8 @@ class VerkleTree:
     - Verkle tree data structure
     - Prove and verify functions
 """
+
+
 class NodeType(Enum):
     # Every node is either
     # (i) empty,
@@ -440,10 +591,11 @@ class NodeType(Enum):
     INNER = 1
     LEAF = 2
 
+
 # Use KZG settings as seen in verkle_trie
 class VerkleNode:
     type: NodeType = NodeType.INNER
-    # TODO: THIS IS POTENTIAL OF SPACE COMPLEXITY COST HERE BECAUSE LIST[NONe] *256
+    # TODO: THIS IS POTENTIAL OF SPACE COMPLEXITY COST HERE BECAUSE LIST[NONE] *256
     children: List["VerkleNode"] = [None] * VerkleTree.KEY_LEN
     commitment: blst.P1 = blst.G1().mult(0)
     value: bytes = b""
@@ -476,6 +628,7 @@ class VerkleNode:
 
         self.node_type = node_type
         self.commitment = blst.G1().mult(0)
+
 
 # KZG Commitment (https://raw.githubusercontent.com/giuliop/plonk/main/kzg.py)
 # Curve order
@@ -533,6 +686,7 @@ def add_node_hash(node: VerkleNode):
     """
     DONE:
     Recursively adds all missing commitments and hashes to a verkle trie structure.
+    # NOTE WE ARE USING ETHEREUM'S IMPLEMENTATION OF KZG COMPUTATION.
     """
     if node.node_type == NodeType.LEAF:
         node.hash = hash([node.key, node.value])
@@ -540,7 +694,7 @@ def add_node_hash(node: VerkleNode):
         values = {}
         for i in range(WIDTH):
             if i in node.children:
-                if "hash" not in node[i]:
+                if node[i].hash is None:
                     # Recurse below until we reach the leaf node
                     add_node_hash(node[i])
                 values[i] = int.from_bytes(node.children[i].hash, "little")
@@ -548,8 +702,10 @@ def add_node_hash(node: VerkleNode):
         node.commitment = commitment
         node.hash = hash(commitment.compress())
 
+
 def hash_to_int(data):
     return int.from_bytes(hash(data), "little")
+
 
 def generate_setup(s):
     pass
