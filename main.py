@@ -15,14 +15,21 @@ def main():
     values = {}
     keys = []
     upper_limit = 2**256 - 1
+    # This part is fine
     for _ in range(NUMBER_INITIAL_KEYS):
         key = randint(0, upper_limit).to_bytes(32, "little")
         value = randint(0, upper_limit).to_bytes(32, "little")
-        tree.insert(key, value)
+        tree.insert(tree.root, key, value)
         values[key] = value
         keys.append(key)
 
     key_list = []
+    time_a = time()
+    add_node_hash(tree.root)
+    time_b = time()
+    print("Computed verkle root in {0:.3f} s".format(time_b - time_a))
+
+    # This part is fine
     for _ in range(NUMBER_ADDED_KEYS):
         key = randint(0, upper_limit).to_bytes(32, "little")
         key_list.append(key)
@@ -30,20 +37,19 @@ def main():
         tree.insert_update_node(key, value)
         values[key] = value
 
-    # We compute 5000 proof for 5000 keys
-    proof = tree.make_verkle_proof(tree, [key_list[0]])
-    print("The proof formed-" + "\n" + f"{proof}")
+    # proof = tree.make_verkle_proof(tree, [key_list[0]])
+    # print("The proof formed-" + "\n" + f"{proof}")
     print("done Starting big work")
     time_a = time()
     proof = tree.make_verkle_proof(tree, keys[:NUMBER_KEYS_PROOF])
     time_b = time()
-    print(
-        "Computed proof for {0} keys (size = {1} bytes) in {2:.3f} s".format(
-            NUMBER_KEYS_PROOF, proof, time_b - time_a
-        )
-    )
+    # print(
+    #     "Computed proof for {0} keys (size = {1} bytes) in {2:.3f} s".format(
+    #         NUMBER_KEYS_PROOF, proof, time_b - time_a
+    #     )
+    # )
 
-    print(proof)
+    # print(proof)
 
     # Verify the proof
     res = tree.check_verkle_proof(

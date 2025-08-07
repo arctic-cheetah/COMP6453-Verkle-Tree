@@ -108,8 +108,8 @@ class Proof:
         self.compressedMultiProof = compressedMultiProof
 
     def __str__(self):
-        string = f"===Proof===\n\tDepths: {self.depths}\n\tCommitsSortedByIndex: {self.commitsSortedByIndex[]}"
-        return "Printing proofs"
+        stringBuilt = f"\n\tDepths: {self.depths[:10]}\n\tCommitsSortedByIndex: {self.commitsSortedByIndex[:10]}\n\tChallenges: {self.challenge}"
+        return stringBuilt
 
 
 class NodeType(Enum):
@@ -147,11 +147,11 @@ class VerkleTree:
         # making an empty node
         self.root = VerkleNode(self.branch_factor, NodeType.INNER)
 
-    def insert(self, key: bytes, value: bytes):
+    def insert(self, currRoot: "VerkleNode", key: bytes, value: bytes):
         """
         Insert without updating the hashes/commmits/ this is to allow us to build a full trie
         """
-        currNode = self.root
+        currNode = currRoot
         indices = iter(self.getVerkleIndex(key))
         currIndex = None
         while currNode.node_type == NodeType.INNER:
@@ -170,17 +170,19 @@ class VerkleTree:
             currNode.value = value
         else:
             # Split the node
-            prevNode.children[currIndex] = VerkleNode(NodeType.INNER)
-            self.insert(self.root, key, value)
-            self.insert(self.root, currNode.key, currNode.value)
+            newInnerNode = VerkleNode(NodeType.INNER)
+            prevNode.children[currIndex] = newInnerNode
+            self.insert(newInnerNode, key, value)
+            self.insert(newInnerNode, currNode.key, currNode.value)
 
     def insert_update_node(self, key: bytes, value: bytes):
         node = self.root
         indices = iter(self.getVerkleIndex(key))
         newNode = VerkleNode(self.branch_factor, value, key, NodeType.LEAF)
         # descend and allocate internal nodes
-        valueChange: int = -1
+        # valueChange: int = -1
         path: List[Tuple[int, VerkleNode]] = []
+        add_node_hash(newNode)
 
         while True:
             index = next(indices)
@@ -211,7 +213,7 @@ class VerkleTree:
                             KEY_LEN // WIDTH_BITS, node_type=NodeType.INNER
                         )
                         # getting error here sometimes
-                        # assert oldIndex != newIndex
+                        assert oldIndex != newIndex
                         newInnerNode.children[newIndex] = newNode
                         newInnerNode.children[oldIndex] = oldNode
                         add_node_hash(newInnerNode)
@@ -235,10 +237,19 @@ class VerkleTree:
 
         # DONE: Updates all the parent commits along the path
         for index, currNode in reversed(path):
-            currNode.commitment.add(SETUP["g1_lagrange"][index].dup().mult(valueChange))
-            oldHash = node.hash
+            # NOTE: Error is fixed!
+            # print("Before: " + str(currNode.commitment.compress()))
+
+            currNode.commitment = currNode.commitment.add(
+                SETUP["g1_lagrange"][index].dup().mult(valueChange)
+            )
+            currNode.commitmentCompressed = currNode.commitment.compress()
+            # print("After: " + str(currNode.commitment.compress()))
+            # print("______________________________")
+
+            oldHash = currNode.hash
             newHash = hash(currNode.commitment)
-            node.hash = newHash
+            currNode.hash = newHash
             valueChange = (
                 MODULUS
                 + int.from_bytes(newHash, "little")
@@ -444,14 +455,16 @@ class VerkleTree:
                 if (node != None and node.node_type == NodeType.LEAF)
                 else None
             )
-            for index, subindex, node in path:
+            for index, subindex, node in path:  # TODO: CHECK line 447 OR 440 for bug!
                 nodesByIndex[index] = node
                 nodesByIndexSubIndex[(index, subindex)] = node
-
         # log_time_if_eligible("   Computed key paths", 30, display_times)
 
         # All commitments, but without any duplications. These are for sending over the wire as part of the proof
         nodesSortedByIndex = list(map(lambda x: x[1], sorted(nodesByIndex.items())))
+        nodesCompressedSortedByIndex = list(
+            map(lambda x: x[1].commitment.compress(), sorted(nodesByIndex.items()))
+        )
 
         # Nodes sorted
         nodesSortedByIndexAndSubIndex = list(
@@ -474,6 +487,7 @@ class VerkleTree:
         # log_time_if_eligible("   Sorted all commitments", 30, display_times)
 
         fs = []
+        # TODO: CHECK
         Cs = [x.commitment for x in nodesSortedByIndexAndSubIndex]
 
         for node in nodesSortedByIndexAndSubIndex:
@@ -494,7 +508,7 @@ class VerkleTree:
         polySerialised, challenge, compressedMultiProof = self.make_kzg_multiproof(
             Cs, fs, indices, ys, display_times
         )
-
+        # TODO: THIS IS BUG
         commitsSortedIndexSerialised = [
             x.commitment.compress() for x in nodesSortedByIndex[1:]
         ]
@@ -524,6 +538,7 @@ class VerkleTree:
         commitSortByIndex = [blst.P1(rootCommit)] + [
             blst.P1(c) for c in proof.commitsSortedByIndex
         ]
+
         everyIndices = set()
         IndicesAndSubIndicies = set()
         leafValByIndexSubIndex = {}
@@ -611,6 +626,7 @@ class VerkleNode:
     # TODO: THIS IS POTENTIAL OF SPACE COMPLEXITY COST HERE BECAUSE LIST[NONE] *256
     children: List["VerkleNode"] = [None] * VerkleTree.KEY_LEN
     commitment: blst.P1 = blst.G1().mult(0)
+    commitmentCompressed: bytes = b""
     value: bytes = b""
     key: bytes = b""
     hash: bytes = b""
@@ -641,6 +657,7 @@ class VerkleNode:
 
         self.node_type = node_type
         self.commitment = blst.G1().mult(0)
+        self.commitmentCompressed = self.commitment.compress()
 
 
 # KZG Commitment (https://raw.githubusercontent.com/giuliop/plonk/main/kzg.py)
@@ -681,11 +698,26 @@ def add_node_hash(node: VerkleNode):
     if node.node_type == NodeType.INNER:
         values = {}
         for i in range(WIDTH):
-            if i in node.children:
-                if node[i].hash is None:
-                    # Recurse below until we reach the leaf node
-                    add_node_hash(node[i])
+            if node.children[i] != None:
+                if node.children[i].hash == b"":
+                    add_node_hash(node.children[i])
                 values[i] = int.from_bytes(node.children[i].hash, "little")
-        commitment = kzg_utils.compute_commitment_lagrange(values)
-        node.commitment = commitment
-        node.hash = hash(commitment.compress())
+        node.commitment = kzg_utils.compute_commitment_lagrange(values)
+        node.hash = hash(node.commitment.compress())
+
+
+# def add_node_hash(node: "VerkleNode"):
+#     """
+#     Recursively adds all missing commitments and hashes to a Verkle tree node.
+#     """
+#     if node.node_type == NodeType.LEAF:
+#         node.hash = hash([node.key, node.value])
+#     elif node.node_type == NodeType.INNER:
+#         values = {}
+#         for i, child in enumerate(node.children):
+#             if child is not None:
+#                 if not hasattr(child, "hash") or child.hash is None:
+#                     add_node_hash(child)
+#                 values[i] = int.from_bytes(child.hash, "little")
+#         node.commitment = kzg_utils.compute_commitment_lagrange(values)
+#         node.hash = hash(node.commitment.compress())
