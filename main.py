@@ -37,39 +37,40 @@ def main():
     key_list = []
     time_a = time()
     add_node_hash(tree.root)
+    # add_node_hash_parallel(tree.root)
     time_b = time()
     print("Computed verkle root in {0:.3f} s".format(time_b - time_a))
 
-    # This part is fine
-    for _ in range(NUMBER_ADDED_KEYS):
-        key = randint(0, upper_limit).to_bytes(32, "little")
-        key_list.append(key)
-        value = randint(0, upper_limit).to_bytes(32, "little")
-        tree.insert_update_node(key, value)
-        values[key] = value
+    # # This part is fine
+    # for _ in range(NUMBER_ADDED_KEYS):
+    #     key = randint(0, upper_limit).to_bytes(32, "little")
+    #     key_list.append(key)
+    #     value = randint(0, upper_limit).to_bytes(32, "little")
+    #     tree.insert_update_node(key, value)
+    #     values[key] = value
 
-    # proof = tree.make_verkle_proof(tree, [key_list[0]])
-    # print("The proof formed-" + "\n" + f"{proof}")
+    # # proof = tree.make_verkle_proof(tree, [key_list[0]])
+    # # print("The proof formed-" + "\n" + f"{proof}")
 
-    print("done Starting big work")
-    time_a = time()
-    proof = tree.make_verkle_proof(tree, keys[:NUMBER_KEYS_PROOF])
-    time_b = time()
-    print(
-        "Computed proof for {0} keys (size = {1} bytes) in {2:.3f} s".format(
-            NUMBER_KEYS_PROOF, proof, time_b - time_a
-        )
-    )
+    # print("done Starting big work")
+    # time_a = time()
+    # proof = tree.make_verkle_proof(tree, keys[:NUMBER_KEYS_PROOF])
+    # time_b = time()
+    # print(
+    #     "Computed proof for {0} keys (size = {1} bytes) in {2:.3f} s".format(
+    #         NUMBER_KEYS_PROOF, proof, time_b - time_a
+    #     )
+    # )
 
-    # Verify the proof
-    res = tree.check_verkle_proof(
-        tree.root.commitment.compress(),
-        keys,
-        [values[k] for k in keys[:NUMBER_KEYS_PROOF]],
-        proof,
-        False,
-    )
-    print("Success " + str(res))
+    # # Verify the proof
+    # res = tree.check_verkle_proof(
+    #     tree.root.commitment.compress(),
+    #     keys,
+    #     [values[k] for k in keys[:NUMBER_KEYS_PROOF]],
+    #     proof,
+    #     False,
+    # )
+    # print("Success " + str(res))
 
     # # Binary verkle tree (branching 2)
     # tree1 = verkle.VerkleTree(2)

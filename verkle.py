@@ -1,6 +1,6 @@
 from enum import Enum
 from hashlib import sha256
-import hashlib, secrets, sympy
+import hashlib
 from py_ecc.optimized_bls12_381 import optimized_curve as curve, pairing
 from verkle_trie.kzg_utils import KzgUtils
 import kzg_utils
@@ -10,6 +10,7 @@ import pippenger
 import blst
 import hashlib
 from typing import *
+import numpy as np
 
 NUMBER_KEYS_PROOF = 5000
 
@@ -21,9 +22,9 @@ def generate_setup(size, secret) -> Dict[str, List[blst.P1 | blst.P2]]:
     Where G1 is the polynomial commitment group and G2 is the pairing group
     as well as the Lagrange polynomials in G1 (via FFT)
     """
-    g1_setup = [blst.G1().mult(pow(secret, i, MODULUS)) for i in range(size)]
-    g2_setup = [blst.G2().mult(pow(secret, i, MODULUS)) for i in range(size)]
-    g1_lagrange = fft(g1_setup, MODULUS, ROOT_OF_UNITY, inv=True)
+    g1_setup = np.array([blst.G1().mult(pow(secret, i, MODULUS)) for i in range(size)])
+    g2_setup = np.array([blst.G2().mult(pow(secret, i, MODULUS)) for i in range(size)])
+    g1_lagrange = np.array(fft(g1_setup, MODULUS, ROOT_OF_UNITY, inv=True))
     return {"g1": g1_setup, "g2": g2_setup, "g1_lagrange": g1_lagrange}
 
 
@@ -37,7 +38,7 @@ MODULUS = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
 primefield = PrimeField(MODULUS)
 ROOT_OF_UNITY = pow(PRIMITIVE_ROOT, (MODULUS - 1) // WIDTH, MODULUS)
 SETUP = generate_setup(WIDTH, SECRET)
-DOMAIN = [pow(ROOT_OF_UNITY, i, MODULUS) for i in range(WIDTH)]
+DOMAIN = np.array([pow(ROOT_OF_UNITY, i, MODULUS) for i in range(WIDTH)])
 kzg_utils = KzgUtils(MODULUS, WIDTH, DOMAIN, SETUP, primefield)
 
 
@@ -86,10 +87,9 @@ Store ur proofs here
 
 
 class Proof:
-    depths: List[bytes] = []
-    commitsSortedByIndex: List[bytes] = []
+    depths: np.ndarray = np.array([], dtype=object)
+    commitsSortedByIndex: np.ndarray = np.array([], dtype=object)
     polySerialised: bytes = b""
-    # challenge represents the y value for the KZG polynomial
     challenge: bytes = b""
     compressedMultiProof: bytes = b""
 
@@ -101,8 +101,8 @@ class Proof:
         challenge: bytes,
         compressedMultiProof: bytes,
     ):
-        self.depths = depths
-        self.commitsSortedByIndex = commitsSortedByIndex
+        self.depths = np.array(depths, dtype=object)
+        self.commitsSortedByIndex = np.array(commitsSortedByIndex, dtype=object)
         self.polySerialised = polySerialised
         self.challenge = challenge
         self.compressedMultiProof = compressedMultiProof
@@ -131,16 +131,16 @@ class VerkleTree:
     primefield = PrimeField(MODULUS)
     branch_factor = -1
     ROOT_OF_UNITY = pow(PRIMITIVE_ROOT, (MODULUS - 1) // WIDTH, MODULUS)
-    DOMAIN = []
+    DOMAIN = np.array([], dtype=object)
     root: "VerkleNode" = None
 
     # Empty || Leaf(Key, Value) || Node(Commitment, Children)
     def __init__(
         self,
     ):
-        self.DOMAIN = [
-            pow(self.ROOT_OF_UNITY, i, self.MODULUS) for i in range(self.WIDTH)
-        ]
+        self.DOMAIN = np.array(
+            [pow(self.ROOT_OF_UNITY, i, self.MODULUS) for i in range(self.WIDTH)]
+        )
         self.branch_factor = KEY_LEN // WIDTH_BITS
         # one SRS for all nodes
         # self.srs = generate_setup(branch_factor)
@@ -269,7 +269,7 @@ class VerkleTree:
             index = x % WIDTH
             x //= WIDTH
             indices.append(index)
-        return tuple(reversed(indices))
+        return tuple(np.array(list(reversed(indices)), dtype=int))
 
     def root_commit(self):
         return self.root.commitment
@@ -350,13 +350,12 @@ class VerkleTree:
 
         # log_time_if_eligible("   Hashed to r", 30, display_times)
 
-        g = [0 for _ in range(WIDTH)]
+        g = np.zeros(WIDTH, dtype=np.int64)
         power_of_r = 1
         for f, index in zip(fs, indices):
             quotient = kzg_utils.compute_inner_quotient_in_evaluation_form(f, index)
-            for i in range(WIDTH):
-                g[i] += power_of_r * quotient[i]
-
+            quotient = np.array(quotient, dtype=np.int64)
+            g += power_of_r * quotient
             power_of_r = power_of_r * r % MODULUS
 
         # log_time_if_eligible("   Computed g polynomial", 30, display_times)
@@ -369,14 +368,13 @@ class VerkleTree:
 
         t = hash_to_int([r, D]) % MODULUS
 
-        h = [0 for _ in range(WIDTH)]
+        h = np.zeros(WIDTH, dtype=np.int64)
         power_of_r = 1
 
         for f, index in zip(fs, indices):
             denominator_inv = primefield.inv(t - DOMAIN[index])
-            for i in range(WIDTH):
-                h[i] += power_of_r * f[i] * denominator_inv % MODULUS
-
+            f_arr = np.array(f, dtype=np.int64)
+            h += power_of_r * f_arr * denominator_inv % MODULUS
             power_of_r = power_of_r * r % MODULUS
 
         # log_time_if_eligible("   Computed h polynomial", 30, display_times)
@@ -426,15 +424,18 @@ class VerkleTree:
         #
         nodesByIndex = {}
         nodesByIndexSubIndex = {}
-        values: list[bytes] = []
-        depths: list[int] = []
+        values: np.ndarray = np.array([], dtype=object)
+        depths: np.ndarray = np.array([], dtype=int)
         for key in keys:
             path, node = self.find_node_with_path(tree.root, key)
-            depths.append(len(path))
-            values.append(
-                node.value
-                if (node != None and node.node_type == NodeType.LEAF)
-                else None
+            depths = np.append(depths, len(path))
+            values = np.append(
+                values,
+                (
+                    node.value
+                    if (node != None and node.node_type == NodeType.LEAF)
+                    else None
+                ),
             )
             for index, subindex, node in path:  # TODO: CHECK line 447 OR 440 for bug!
                 nodesByIndex[index] = node
@@ -442,59 +443,67 @@ class VerkleTree:
         # log_time_if_eligible("   Computed key paths", 30, display_times)
 
         # All commitments, but without any duplications. These are for sending over the wire as part of the proof
-        nodesSortedByIndex = list(map(lambda x: x[1], sorted(nodesByIndex.items())))
-        nodesCompressedSortedByIndex = list(
-            map(lambda x: x[1].commitment.compress(), sorted(nodesByIndex.items()))
+        nodesSortedByIndex = np.array(
+            list(map(lambda x: x[1], sorted(nodesByIndex.items()))), dtype=object
         )
-
-        # Nodes sorted
-        nodesSortedByIndexAndSubIndex = list(
-            map(lambda x: x[1], sorted(nodesByIndexSubIndex.items()))
+        nodesCompressedSortedByIndex = np.array(
+            list(
+                map(lambda x: x[1].commitment.compress(), sorted(nodesByIndex.items()))
+            ),
+            dtype=object,
         )
-
-        indices = list(map(lambda x: x[0][1], sorted(nodesByIndexSubIndex.items())))
-
-        ys = list(
-            map(
-                lambda x: (
-                    int.from_bytes((x[1].children[x[0][1]]).hash, "little")
-                    if x[1].children[x[0][1]] is not None
-                    else 0
-                ),
-                sorted(nodesByIndexSubIndex.items()),
-            )
+        nodesSortedByIndexAndSubIndex = np.array(
+            list(map(lambda x: x[1], sorted(nodesByIndexSubIndex.items()))),
+            dtype=object,
+        )
+        indices = np.array(
+            list(map(lambda x: x[0][1], sorted(nodesByIndexSubIndex.items()))),
+            dtype=int,
+        )
+        ys = np.array(
+            list(
+                map(
+                    lambda x: (
+                        int.from_bytes((x[1].children[x[0][1]]).hash, "little")
+                        if x[1].children[x[0][1]] is not None
+                        else 0
+                    ),
+                    sorted(nodesByIndexSubIndex.items()),
+                )
+            ),
+            dtype=np.int64,
         )
 
         # log_time_if_eligible("   Sorted all commitments", 30, display_times)
 
         fs = []
-        # TODO: CHECK
-        Cs = [x.commitment for x in nodesSortedByIndexAndSubIndex]
-
+        Cs = np.array(
+            [x.commitment for x in nodesSortedByIndexAndSubIndex], dtype=object
+        )
         for node in nodesSortedByIndexAndSubIndex:
             if node.node_type == NodeType.LEAF:
                 fs.append(int.from_bytes(node.value, "little"))
             else:
                 fs.append(
-                    [
-                        (
-                            int.from_bytes(node.children[i].hash, "little")
-                            if node.children[i] is not None
-                            else 0
-                        )
-                        for i in range(WIDTH)
-                    ]
+                    np.array(
+                        [
+                            (
+                                int.from_bytes(node.children[i].hash, "little")
+                                if node.children[i] is not None
+                                else 0
+                            )
+                            for i in range(WIDTH)
+                        ],
+                        dtype=np.int64,
+                    )
                 )
 
         polySerialised, challenge, compressedMultiProof = self.make_kzg_multiproof(
             Cs, fs, indices, ys, display_times
         )
-        # TODO: THIS IS BUG
-        commitsSortedIndexSerialised = [
-            x.commitment.compress() for x in nodesSortedByIndex[1:]
-        ]
-
-        # log_time_if_eligible("   Serialized commitments", 30, display_times)
+        commitsSortedIndexSerialised = np.array(
+            [x.commitment.compress() for x in nodesSortedByIndex[1:]], dtype=object
+        )
         proof: Proof = Proof(
             depths,
             commitsSortedIndexSerialised,
@@ -604,7 +613,9 @@ class NodeType(Enum):
 # Use KZG settings as seen in verkle_trie
 class VerkleNode:
     # TODO: THIS IS POTENTIAL OF SPACE COMPLEXITY COST HERE BECAUSE LIST[NONE] *256
-    children: List["VerkleNode"] = [None] * VerkleTree.KEY_LEN
+    # children: List["VerkleNode"] = [None] * VerkleTree.KEY_LEN
+    children: np.ndarray = np.array([None] * VerkleTree.KEY_LEN, dtype=object)
+
     commitment: blst.P1 = blst.G1().mult(0)
     commitmentCompressed: bytes = b""
     value: bytes = b""
@@ -631,7 +642,7 @@ class VerkleNode:
         self.branch_factor = KEY_LEN
         self.value = value
         if node_type == NodeType.INNER:
-            self.children = [None] * KEY_LEN
+            self.children = np.array([None] * KEY_LEN, dtype=object)
         else:
             self.children = None
 
@@ -678,7 +689,7 @@ def add_node_hash(node: VerkleNode):
     if node.node_type == NodeType.INNER:
         values = {}
         for i in range(WIDTH):
-            if node.children[i] != None:
+            if node.children[i] is not None:
                 if node.children[i].hash == b"":
                     add_node_hash(node.children[i])
                 values[i] = int.from_bytes(node.children[i].hash, "little")
@@ -686,18 +697,47 @@ def add_node_hash(node: VerkleNode):
         node.hash = hash(node.commitment.compress())
 
 
-# def add_node_hash(node: "VerkleNode"):
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+
+# Parallel processing confers no advantage here
+
+
+# def add_node_hash_parallel(node: VerkleNode, max_workers=8):
 #     """
-#     Recursively adds all missing commitments and hashes to a Verkle tree node.
+#     Recursively adds all missing commitments and hashes to a verkle trie structure in parallel.
 #     """
 #     if node.node_type == NodeType.LEAF:
 #         node.hash = hash([node.key, node.value])
-#     elif node.node_type == NodeType.INNER:
+#         return
+
+#     if node.node_type == NodeType.INNER:
 #         values = {}
-#         for i, child in enumerate(node.children):
-#             if child is not None:
-#                 if not hasattr(child, "hash") or child.hash is None:
-#                     add_node_hash(child)
-#                 values[i] = int.from_bytes(child.hash, "little")
+#         futures = []
+#         with ThreadPoolExecutor(max_workers=max_workers) as executor:
+#             for i in range(WIDTH):
+#                 child = node.children[i]
+#                 if child is not None:
+#                     if child.hash == b"":
+#                         futures.append(
+#                             executor.submit(add_node_hash_parallel, child, max_workers)
+#                         )
+#             for future in as_completed(futures):
+#                 future.result()
+#             for i in range(WIDTH):
+#                 child = node.children[i]
+#                 if child is not None:
+#                     values[i] = int.from_bytes(child.hash, "little")
+#         node.commitment = kzg_utils.compute_commitment_lagrange(values)
+#         node.hash = hash(node.commitment.compress())
+#         node.commitment = kzg_utils.compute_commitment_lagrange(values)
+#         node.hash = hash(node.commitment.compress())
+#             for future in as_completed(futures):
+#                 future.result()
+#             for i in range(WIDTH):
+#                 child = node.children[i]
+#                 if child is not None:
+#                     values[i] = int.from_bytes(child.hash, "little")
+#         node.commitment = kzg_utils.compute_commitment_lagrange(values)
+#         node.hash = hash(node.commitment.compress())
 #         node.commitment = kzg_utils.compute_commitment_lagrange(values)
 #         node.hash = hash(node.commitment.compress())
