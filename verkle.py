@@ -533,6 +533,7 @@ class VerkleTree:
         IndicesAndSubIndicies = sorted(IndicesAndSubIndicies)
 
         # create the commitment list and sort them by index
+        # TODO: possibly improve this code below:
         commitsByIndex = {
             index: commitment
             for index, commitment in zip(everyIndices, commitSortByIndex)
@@ -659,31 +660,6 @@ assert q_1 == curve.curve_order - 1
 """Code from giuliop/plonk"""
 
 
-# Fk this shit omar
-def commit(poly, h):
-    """
-    Commit to a polynomial.
-    Args:
-        poly: The polynomial to commit to as a list of coefficients,
-        starting from the highest degree, or as a sympy Poly.
-        h: parameters of the trusted setup
-    Returns:
-        The commitment to the polynomial, a point in G1.
-    """
-    if isinstance(poly, sympy.Poly):
-        poly = [x % curve.curve_order for x in poly.all_coeffs()]
-
-    degree = len(poly) - 1
-    com_f = curve.Z1
-
-    for i, pi in enumerate(poly):
-        pi = pi % curve.curve_order
-        d = degree - i
-        com_f = curve.add(com_f, curve.multiply(h[0][d], pi))
-
-    return com_f
-
-
 # Use this
 def add_node_hash(node: VerkleNode):
     """
@@ -704,39 +680,3 @@ def add_node_hash(node: VerkleNode):
         commitment = kzg_utils.compute_commitment_lagrange(values)
         node.commitment = commitment
         node.hash = hash(commitment.compress())
-
-
-def hash_to_int(data):
-    return int.from_bytes(hash(data), "little")
-
-
-def generate_setup(s):
-    pass
-
-
-def hash_point_to_field(pt):
-    pass
-
-
-def layer_commit(values, setup):
-    pass
-
-
-def generate_quotient(values, index):
-    pass
-
-
-def generate_tree(data, setup):
-    pass
-
-
-def generate_proof(data_tree, commitment_tree, indices, setup):
-    pass
-
-
-def verify_proof(proof, commitment_root, indices, values, setup):
-    pass
-
-
-def test():
-    pass
