@@ -16,13 +16,24 @@ def main():
     keys = []
     upper_limit = 2**256 - 1
     # This part is fine
-    for _ in range(NUMBER_INITIAL_KEYS):
+    time_a = time()
+    for i in range(NUMBER_INITIAL_KEYS):
+
+        if i == NUMBER_INITIAL_KEYS - 2:
+            print("HERE")
         key = randint(0, upper_limit).to_bytes(32, "little")
         value = randint(0, upper_limit).to_bytes(32, "little")
         tree.insert(tree.root, key, value)
         values[key] = value
         keys.append(key)
+    time_b = time()
+    print(
+        "Inserted {0} elements in {1:.3f} s".format(
+            NUMBER_INITIAL_KEYS, time_b - time_a
+        )
+    )
 
+    # Inserted
     key_list = []
     time_a = time()
     add_node_hash(tree.root)
@@ -39,17 +50,16 @@ def main():
 
     # proof = tree.make_verkle_proof(tree, [key_list[0]])
     # print("The proof formed-" + "\n" + f"{proof}")
+
     print("done Starting big work")
     time_a = time()
     proof = tree.make_verkle_proof(tree, keys[:NUMBER_KEYS_PROOF])
     time_b = time()
-    # print(
-    #     "Computed proof for {0} keys (size = {1} bytes) in {2:.3f} s".format(
-    #         NUMBER_KEYS_PROOF, proof, time_b - time_a
-    #     )
-    # )
-
-    # print(proof)
+    print(
+        "Computed proof for {0} keys (size = {1} bytes) in {2:.3f} s".format(
+            NUMBER_KEYS_PROOF, proof, time_b - time_a
+        )
+    )
 
     # Verify the proof
     res = tree.check_verkle_proof(

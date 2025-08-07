@@ -181,7 +181,7 @@ def update_verkle_node(root, key, value):
 
     # Update all the parent commitments along 'path'
     for index, node in reversed(path):
-        print(f"Value Change: {value_change}")
+        # print(f"Value Change: {value_change}")
         # TODO: FUCK YOU ETHEREUM U HAVE A BUG MADARCHOD KANKIPOLA
         node["commitment"].add(SETUP["g1_lagrange"][index].dup().mult(value_change))
         old_hash = node["hash"]
@@ -597,8 +597,8 @@ def check_verkle_proof(trie, keys, values, proof, display_times=True):
         blst.P1(x) for x in commitments_sorted_by_index_serialized
     ]
 
-    for x in commitments_sorted_by_index:
-        print(f"commit : {x.compress()}")
+    # for x in commitments_sorted_by_index:
+    # print(f"commit : {x.compress()}")
 
     all_indices = set()
     all_indices_and_subindices = set()

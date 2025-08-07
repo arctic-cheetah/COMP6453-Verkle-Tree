@@ -162,7 +162,9 @@ class VerkleTree:
                 currNode = currNode.children[currIndex]
             else:
                 # when the child is none, just insert a new node here
-                currNode.children[currIndex] = VerkleNode(NodeType.LEAF, value, key)
+                currNode.children[currIndex] = VerkleNode(
+                    KEY_LEN, value, key, NodeType.LEAF
+                )
                 return
 
         # If we are here, then we are at a leaf node
@@ -170,10 +172,10 @@ class VerkleTree:
             currNode.value = value
         else:
             # Split the node
-            newInnerNode = VerkleNode(NodeType.INNER)
+            newInnerNode = VerkleNode(node_type=NodeType.INNER)
             prevNode.children[currIndex] = newInnerNode
-            self.insert(newInnerNode, key, value)
-            self.insert(newInnerNode, currNode.key, currNode.value)
+            self.insert(currRoot, key, value)
+            self.insert(currRoot, currNode.key, currNode.value)
 
     def insert_update_node(self, key: bytes, value: bytes):
         node = self.root
@@ -209,9 +211,7 @@ class VerkleTree:
                     else:
                         newIndex = next(indices)
                         oldIndex = self.getVerkleIndex(oldNode.key)[len(path)]
-                        newInnerNode = VerkleNode(
-                            KEY_LEN // WIDTH_BITS, node_type=NodeType.INNER
-                        )
+                        newInnerNode = VerkleNode(node_type=NodeType.INNER)
                         # getting error here sometimes
                         assert oldIndex != newIndex
                         newInnerNode.children[newIndex] = newNode
@@ -270,25 +270,6 @@ class VerkleTree:
             x //= WIDTH
             indices.append(index)
         return tuple(reversed(indices))
-
-    def recommit(self, node: "VerkleNode"):
-        """Recomputes the commitment for the given node and all its children. (Post-order)"""
-        if node.children is None:
-            return
-        for child in node.children:
-            if child is not None:
-                self._recommit(child)
-        poly = []
-        for child in node.children:
-            if child is None:
-                poly.append(0)
-            elif child.children is None:
-                poly.append(child.value % curve.curve_order)
-            else:
-                # commitment to a scalar (TODO)
-                pass
-
-        node.commitment = commit(poly, self.srs)
 
     def root_commit(self):
         return self.root.commitment
@@ -622,7 +603,6 @@ class NodeType(Enum):
 
 # Use KZG settings as seen in verkle_trie
 class VerkleNode:
-    type: NodeType = NodeType.INNER
     # TODO: THIS IS POTENTIAL OF SPACE COMPLEXITY COST HERE BECAUSE LIST[NONE] *256
     children: List["VerkleNode"] = [None] * VerkleTree.KEY_LEN
     commitment: blst.P1 = blst.G1().mult(0)
