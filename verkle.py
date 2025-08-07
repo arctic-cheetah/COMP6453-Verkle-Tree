@@ -143,7 +143,7 @@ class VerkleTree:
         Insert without updating the hashes/commmits/ this is to allow us to build a full trie
         """
         currNode = self.root
-        indices = iter(self.get_verkleIndex(key))
+        indices = iter(self.getVerkleIndex(key))
         currIndex = None
         while currNode.node_type == NodeType.INNER:
             prevNode = currNode
@@ -167,7 +167,7 @@ class VerkleTree:
 
     def insert_update_node(self, key: bytes, value: bytes):
         node = self.root
-        indices = iter(self.get_verkleIndex(key))
+        indices = iter(self.getVerkleIndex(key))
         newNode = VerkleNode(self.branch_factor, value, key, NodeType.LEAF)
         # descend and allocate internal nodes
         valueChange: int = -1
@@ -197,7 +197,7 @@ class VerkleTree:
                     # 2) No, Then split the node
                     else:
                         newIndex = next(indices)
-                        oldIndex = self.get_verkleIndex(oldNode.key)[len(path)]
+                        oldIndex = self.getVerkleIndex(oldNode.key)[len(path)]
                         newInnerNode = VerkleNode(
                             KEY_LEN // WIDTH_BITS, node_type=NodeType.INNER
                         )
@@ -212,7 +212,7 @@ class VerkleTree:
                             + int.from_bytes(newInnerNode.hash, "little")
                             - int.from_bytes(oldNode.hash, "little")
                         ) % MODULUS
-                        # newIndex = self.get_verkleIndex(oldNode
+                        # newIndex = self.getVerkleIndex(oldNode
                         # Make a new inner node and place the old and new leaf under the
                         break
 
@@ -236,7 +236,7 @@ class VerkleTree:
                 - int.from_bytes(oldHash, "little")
             ) % MODULUS
 
-    def get_verkleIndex(self, key: bytes) -> Tuple[int]:
+    def getVerkleIndex(self, key: bytes) -> Tuple[int]:
         """
         Generates the list of verkle indices for key
         """
@@ -334,6 +334,9 @@ class VerkleTree:
         https://dankradfeist.de/ethereum/2021/06/18/pcs-multiproofs.html
 
         zs[i] = DOMAIN[indexes[i]]
+        D = polynomial commitment g(x) in serialised evaluation form
+        y is the challenge
+        sigma is the compressed KZG multiproof
         """
 
         # Step 1: Construct g(X) polynomial in evaluation form
@@ -346,7 +349,7 @@ class VerkleTree:
 
         # log_time_if_eligible("   Hashed to r", 30, display_times)
 
-        g = [0 for i in range(WIDTH)]
+        g = [0 for _ in range(WIDTH)]
         power_of_r = 1
         for f, index in zip(fs, indices):
             quotient = kzg_utils.compute_inner_quotient_in_evaluation_form(f, index)
@@ -397,7 +400,7 @@ class VerkleTree:
         As 'find_node', but returns the path of all nodes on the way to 'key' as well as their index
         """
         current_node = node
-        indices = iter(self.get_verkle_indices(key))
+        indices = iter(self.getVerkleIndex(key))
         path = []
         current_index_path = []
         while current_node.node_type == NodeType.INNER:
@@ -413,7 +416,7 @@ class VerkleTree:
         return path, None
 
     def make_verkle_proof(
-        self, tree: "VerkleTree", keys: bytes, display_times=False
+        self, tree: "VerkleTree", keys: List[bytes], display_times=False
     ) -> Proof:
         """
         Creates a proof for the 'keys' in the verkle tree given by 'tree'
@@ -425,7 +428,7 @@ class VerkleTree:
         values: list[bytes] = []
         depths: list[int] = []
         for key in keys:
-            path, node = self.find_node_with_path(tree.root, key.to_bytes(32, "little"))
+            path, node = self.find_node_with_path(tree.root, key)
             depths.append(len(path))
             values.append(
                 node.value
@@ -518,7 +521,7 @@ class VerkleTree:
 
         # Find all required indices
         for key, value, depth in zip(keys, values, proof.depths):
-            verkleIndex = self.get_verkleIndex(key)
+            verkleIndex = self.getVerkleIndex(key)
             for i in range(depth):
                 everyIndices.add(verkleIndex[:i])
                 IndicesAndSubIndicies.add((verkleIndex[:i], verkleIndex[i]))

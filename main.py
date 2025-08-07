@@ -1,8 +1,10 @@
+from time import time
 from random import randint
 from verkle import *
 
 NUMBER_INITIAL_KEYS = 2**15
 NUMBER_ADDED_KEYS = 512
+NUMBER_KEYS_PROOF = 5000
 # Testing umbers below
 # NUMBER_INITIAL_KEYS = 10
 # NUMBER_ADDED_KEYS = 10
@@ -11,27 +13,36 @@ NUMBER_ADDED_KEYS = 512
 def main():
     root = VerkleTree()
     values = {}
+    keys = []
     upper_limit = 2**256 - 1
     for _ in range(NUMBER_INITIAL_KEYS):
         key = randint(0, upper_limit).to_bytes(32, "little")
         value = randint(0, upper_limit).to_bytes(32, "little")
         root.insert(key, value)
         values[key] = value
+        keys.append(key)
 
     key_list = []
     for i in range(NUMBER_ADDED_KEYS):
         key = randint(0, upper_limit).to_bytes(32, "little")
-        key_list.append(key)        
+        key_list.append(key)
         value = randint(0, upper_limit).to_bytes(32, "little")
         root.insert_update_node(key, value)
         values[key] = value
 
-    proof = root.make_verkle_proof(root, key_list[0])
+    proof = root.make_verkle_proof(root, [key_list[0]])
     print("The proof formed-" + "\n" + f"{proof}")
-    print("done")
+    print("done Starting big work")
+    time_a = time()
+    proof = root.make_verkle_proof(root, keys[:NUMBER_KEYS_PROOF])
+    time_b = time()
+    print(
+        "Computed proof for {0} keys (size = {1} bytes) in {2:.3f} s".format(
+            NUMBER_KEYS_PROOF, proof, time_b - time_a
+        )
+    )
 
     # Verify the proof
-
 
     # # Binary verkle tree (branching 2)
     # tree1 = verkle.VerkleTree(2)

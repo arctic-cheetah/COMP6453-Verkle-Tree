@@ -575,7 +575,7 @@ def check_verkle_proof(trie, keys, values, proof, display_times=True):
     """
 
     start_logging_time_if_eligible("   Starting proof check", display_times)
-    # Number of keys = num of leaf nodes
+
     # Unpack the proof
     (
         depths,
@@ -594,10 +594,7 @@ def check_verkle_proof(trie, keys, values, proof, display_times=True):
 
     leaf_values_by_index_and_subindex = {}
 
-    # TODO:
     # Find all required indices
-    # wtf indicies and subindicies are deep! The recursive
-    # structure could be a slowdown!
     for key, value, depth in zip(keys, values, depths):
         verkle_indices = get_verkle_indices(key)
         for i in range(depth):
@@ -635,7 +632,6 @@ def check_verkle_proof(trie, keys, values, proof, display_times=True):
             )
 
     Cs = list(map(lambda x: x[1], sorted(commitments_by_index_and_subindex.items())))
-
     indices = list(map(lambda x: x[1], sorted(all_indices_and_subindices)))
 
     ys = list(
@@ -696,7 +692,7 @@ if __name__ == "__main__":
     print("Computed verkle root in {0:.3f} s".format(time_b - time_a), file=sys.stderr)
 
     if NUMBER_ADDED_KEYS > 0:
-        # Not needed!
+        # Check Valid tree Not needed!
         time_a = time()
         check_valid_tree(root)
         time_b = time()
