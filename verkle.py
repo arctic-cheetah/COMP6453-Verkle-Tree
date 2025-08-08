@@ -38,7 +38,7 @@ MODULUS = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
 primefield = PrimeField(MODULUS)
 ROOT_OF_UNITY = pow(PRIMITIVE_ROOT, (MODULUS - 1) // WIDTH, MODULUS)
 SETUP = generate_setup(WIDTH, SECRET)
-DOMAIN = np.array([pow(ROOT_OF_UNITY, i, MODULUS) for i in range(WIDTH)])
+DOMAIN = np.array([pow(ROOT_OF_UNITY, i, MODULUS) for i in range(WIDTH)], dtype=np.object_)
 kzg_utils = KzgUtils(MODULUS, WIDTH, DOMAIN, SETUP, primefield)
 
 
@@ -154,6 +154,7 @@ class VerkleTree:
         currNode = currRoot
         indices = iter(self.getVerkleIndex(key))
         currIndex = None
+        prevNode = None
         while currNode.node_type == NodeType.INNER:
             prevNode = currNode
             prevIndex = currIndex
@@ -171,11 +172,24 @@ class VerkleTree:
         if currNode.key == key:
             currNode.value = value
         else:
-            # Split the node
-            newInnerNode = VerkleNode(node_type=NodeType.INNER)
-            prevNode.children[currIndex] = newInnerNode
-            self.insert(currRoot, key, value)
-            self.insert(currRoot, currNode.key, currNode.value)
+            # # Split the node
+            # newInnerNode = VerkleNode(node_type=NodeType.INNER)
+            # prevNode.children[currIndex] = newInnerNode
+            # self.insert(newInnerNode, key, value)
+            # self.insert(newInnerNode, currNode.key, currNode.value)
+
+            # Key collision (different keys map to the same path)
+            # We need to split the leaf node.
+            # Keep the old leaf's data
+            old_leaf_key = currNode.key
+            old_leaf_value = currNode.value
+            # Replace the leaf with a new inner node
+            assert prevNode is not None, "prevNode should not be None"
+            prevNode.children[currIndex] = VerkleNode(node_type=NodeType.INNER)
+            # Re-insert both the old and new keys from the root.
+            # This will correctly build the new branch under the new inner node.
+            self.insert(self.root, key, value)
+            self.insert(self.root, old_leaf_key, old_leaf_value)
 
     def insert_update_node(self, key: bytes, value: bytes):
         node = self.root
@@ -260,7 +274,7 @@ class VerkleTree:
         """
         Generates the list of verkle indices for key
         """
-        x = int.from_bytes(key, "little")
+        x = int.from_bytes(key, "big")
         last_index_bits = KEY_LEN % WIDTH_BITS
         index = (x % (2**last_index_bits)) << (WIDTH_BITS - last_index_bits)
         x //= 2**last_index_bits
@@ -283,10 +297,12 @@ class VerkleTree:
         D = blst.P1(D_serialized)
         sigma = blst.P1(sigma_serialized)
 
+        ys_bytes = [val.to_bytes(32, 'little') for val in ys]
+
         # Step 1
         r = (
             hash_to_int(
-                [hash(C) for C in Cs] + ys + [kzg_utils.DOMAIN[i] for i in indices]
+                [hash(C.compress()) for C in Cs] + ys_bytes + [kzg_utils.DOMAIN[i] for i in indices]
             )
             % MODULUS
         )
@@ -294,17 +310,16 @@ class VerkleTree:
         # log_time_if_eligible("   Computed r hash", 30, display_times)
 
         # Step 2
-        t = hash_to_int([r, D])
+        t = hash_to_int([r, D.compress()])
         E_coefficients = []
         g_2_of_t = 0
         power_of_r = 1
 
-        for index, y in zip(indices, ys):
-            E_coefficient = primefield.div(power_of_r, t - DOMAIN[index])
+        for index, y_val in zip(indices, ys):
+            E_coefficient = primefield.div(power_of_r, (t - DOMAIN[index]) % MODULUS)
             E_coefficients.append(E_coefficient)
-            g_2_of_t += E_coefficient * y % MODULUS
-
-            power_of_r = power_of_r * r % MODULUS
+            g_2_of_t = (g_2_of_t + E_coefficient * y_val) % MODULUS
+            power_of_r = (power_of_r * r) % MODULUS
 
         # log_time_if_eligible("   Computed g2 and e coeffs", 30, display_times)
 
@@ -315,10 +330,10 @@ class VerkleTree:
         # Step 3 (Check KZG proofs)
         w = (y - g_2_of_t) % MODULUS
 
-        q = hash_to_int([E, D, y, w])
+        q = hash_to_int([E.compress(), D.compress, y.to_bytes(32, 'little'), w.to_bytes(32, 'little')])
 
         if not kzg_utils.check_kzg_proof(
-            E.dup().add(D.dup().mult(q)), t, y + q * w, sigma
+            E.dup().add(D.dup().mult(q)), t, (y + q * w) % MODULUS, sigma
         ):
             return False
 
@@ -343,19 +358,19 @@ class VerkleTree:
         # Step 1: Construct g(X) polynomial in evaluation form
         r = (
             hash_to_int(
-                [hash(C) for C in Cs] + ys + [kzg_utils.DOMAIN[i] for i in indices]
+                [hash(C) for C in Cs] + [y.to_bytes(32, "little") for y in ys] + [kzg_utils.DOMAIN[i] for i in indices]
             )
             % MODULUS
         )
 
         # log_time_if_eligible("   Hashed to r", 30, display_times)
 
-        g = np.zeros(WIDTH, dtype=np.int64)
+        g = np.zeros(WIDTH, dtype=np.object_)
         power_of_r = 1
         for f, index in zip(fs, indices):
             quotient = kzg_utils.compute_inner_quotient_in_evaluation_form(f, index)
-            quotient = np.array(quotient, dtype=np.int64)
-            g += power_of_r * quotient
+            quotient = np.array(quotient, dtype=np.object_)
+            g = g + (power_of_r * quotient)
             power_of_r = power_of_r * r % MODULUS
 
         # log_time_if_eligible("   Computed g polynomial", 30, display_times)
@@ -368,13 +383,13 @@ class VerkleTree:
 
         t = hash_to_int([r, D]) % MODULUS
 
-        h = np.zeros(WIDTH, dtype=np.int64)
+        h = np.zeros(WIDTH, dtype=np.object_)
         power_of_r = 1
 
         for f, index in zip(fs, indices):
-            denominator_inv = primefield.inv(t - DOMAIN[index])
-            f_arr = np.array(f, dtype=np.int64)
-            h += power_of_r * f_arr * denominator_inv % MODULUS
+            denominator_inv = primefield.inv((t - DOMAIN[index]) % MODULUS)
+            f_arr = np.array(f, dtype=np.object_)
+            h = (h + (power_of_r * f_arr * denominator_inv)) % MODULUS
             power_of_r = power_of_r * r % MODULUS
 
         # log_time_if_eligible("   Computed h polynomial", 30, display_times)
@@ -471,7 +486,7 @@ class VerkleTree:
                     sorted(nodesByIndexSubIndex.items()),
                 )
             ),
-            dtype=np.int64,
+            dtype=object,
         )
 
         # log_time_if_eligible("   Sorted all commitments", 30, display_times)
@@ -482,6 +497,7 @@ class VerkleTree:
         )
         for node in nodesSortedByIndexAndSubIndex:
             if node.node_type == NodeType.LEAF:
+                assert False # should never happen
                 fs.append(int.from_bytes(node.value, "little"))
             else:
                 fs.append(
@@ -494,7 +510,7 @@ class VerkleTree:
                             )
                             for i in range(WIDTH)
                         ],
-                        dtype=np.int64,
+                        dtype=object,
                     )
                 )
 
@@ -502,7 +518,7 @@ class VerkleTree:
             Cs, fs, indices, ys, display_times
         )
         commitsSortedIndexSerialised = np.array(
-            [x.commitment.compress() for x in nodesSortedByIndex[1:]], dtype=object
+            [x.commitment.compress() for x in nodesSortedByIndex[1:]], dtype=np.object_
         )
         proof: Proof = Proof(
             depths,
@@ -524,6 +540,7 @@ class VerkleTree:
         proof: Proof,
         displayTime: bool = False,
     ):
+        print(f"Checking verkle proof for keys: {int.from_bytes(keys[0], 'little')} and values: {int.from_bytes(values[0], 'little')}")
         # Reconstruct commitments list
         commitSortByIndex = [blst.P1(rootCommit)] + [
             blst.P1(c) for c in proof.commitsSortedByIndex
@@ -535,13 +552,16 @@ class VerkleTree:
 
         # Find all required indices
         for key, value, depth in zip(keys, values, proof.depths):
+            print(f"finding indices for key {int.from_bytes(key, 'little')}")
             verkleIndex = self.getVerkleIndex(key)
+            print(f"verkleIndex got: {verkleIndex}")
             for i in range(depth):
                 everyIndices.add(verkleIndex[:i])
                 IndicesAndSubIndicies.add((verkleIndex[:i], verkleIndex[i]))
             leafValByIndexSubIndex[
                 (verkleIndex[: depth - 1], verkleIndex[depth - 1])
             ] = hash([key, value])
+            print(f"================================")
 
         everyIndices = sorted(everyIndices)
         IndicesAndSubIndicies = sorted(IndicesAndSubIndicies)
@@ -552,10 +572,12 @@ class VerkleTree:
             index: commitment
             for index, commitment in zip(everyIndices, commitSortByIndex)
         }
+        print(f"commitsByIndex got: {commitsByIndex}")
         commitsByIndexAndSubIndex = {
             IndexAndSubIndex: commitsByIndex[IndexAndSubIndex[0]]
             for IndexAndSubIndex in IndicesAndSubIndicies
         }
+        print(f"commitsByIndexAndSubIndex got: {commitsByIndexAndSubIndex}")
 
         subhashes_by_IndexAndSubIndex = {}
         for IndexAndSubIndex in IndicesAndSubIndicies:
