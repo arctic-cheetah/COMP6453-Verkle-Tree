@@ -233,7 +233,7 @@ class VerkleTree:
                         # But ethereum's implementation did not do so
                         # So we won't do it too.
                         if newIndex == oldIndex:
-                            print("Insertion Error: Index Collision! Try again")
+                            # print("Insertion Error: Index Collision! Try again")
                             return False
                         newInnerNode.children[newIndex] = newNode
                         newInnerNode.children[oldIndex] = oldNode
@@ -613,6 +613,76 @@ class VerkleTree:
             displayTime,
         )
 
+    def delete(self, key: bytes) -> bool:
+        """
+        Delete the leaf with 'key'. Prunes empty / single-leaf inner nodes.
+        Recomputes commitments/hashes (full recompute for simplicity).
+        Returns True if deleted, False if key not found.
+        """
+        # Special case: empty tree
+        if self.root is None:
+            return False
+
+        # If root is a leaf
+        if self.root.node_type == NodeType.LEAF:
+            if self.root.key == key:
+                # Reset to empty inner root
+                self.root = VerkleNode(node_type=NodeType.INNER)
+                add_node_hash(self.root)
+                return True
+            return False
+
+        indices = iter(self.getVerkleIndex(key))
+        parent = None
+        node = self.root
+        path: List[Tuple[int, VerkleNode, Optional[VerkleNode]]] = []
+
+        # Descend to leaf
+        try:
+            while node.node_type == NodeType.INNER:
+                idx = next(indices)
+                path.append((idx, node, parent))
+                if node.children[idx] is None:
+                    return False  # Key not present
+                parent = node
+                node = node.children[idx]
+        except StopIteration:
+            return False
+
+        # Now at a leaf
+        if node.node_type != NodeType.LEAF or node.key != key:
+            return False
+
+        # Remove leaf from its parent
+        if not path:
+            return False  # Should not happen (root leaf handled earlier)
+        leaf_parent_index, leaf_parent_node, _ = path[-1]
+        leaf_parent_node.children[leaf_parent_index] = None
+
+        # Prune upwards: remove empty inner nodes / collapse single-leaf inner nodes
+        for idx, curr, curr_parent in reversed(path):
+            if curr.node_type != NodeType.INNER:
+                continue
+            # Count non-empty children
+            non_empty = [c for c in curr.children if c is not None]
+            if len(non_empty) == 0:
+                if curr_parent is not None:
+                    curr_parent.children[idx] = None
+                # If root becomes empty, keep as empty inner node
+            elif (
+                len(non_empty) == 1
+                and non_empty[0].node_type == NodeType.LEAF
+                and curr_parent is not None
+            ):
+                # Collapse single leaf child upward
+                curr_parent.children[idx] = non_empty[0]
+
+        # Recompute (full) – could be optimized to incremental
+        add_node_hash(self.root)
+        return True
+
+    # ...existing code...
+
     """
     Checks Verkle tree proof according to
     https://notes.ethereum.org/nrQqhVpQRi6acQckwm1Ryg?both
@@ -629,11 +699,9 @@ class VerkleTree:
 
 class NodeType(Enum):
     # Every node is either
-    # (i) empty,
-    # (ii) a leaf node containing a key and value, or
-    # (iii) an intermediate node that has some fixed number of children
+    # (i) a leaf node containing a key and value, or
+    # (ii) an intermediate node that has some fixed number of children
     # (the "width" of the tree)
-    EMPTY = 0
     INNER = 1
     LEAF = 2
 
@@ -642,7 +710,9 @@ class NodeType(Enum):
 class VerkleNode:
     # TODO: THIS IS POTENTIAL OF SPACE COMPLEXITY COST HERE BECAUSE LIST[NONE] *256
     # children: List["VerkleNode"] = [None] * VerkleTree.KEY_LEN
-    children: np.ndarray = np.array([None] * VerkleTree.KEY_LEN, dtype=object)
+    children: np.ndarray["VerkleNode"] = np.array(
+        [None] * VerkleTree.KEY_LEN, dtype=object
+    )
 
     commitment: blst.P1 = blst.G1().mult(0)
     commitmentCompressed: bytes = b""
@@ -679,32 +749,6 @@ class VerkleNode:
         self.commitmentCompressed = self.commitment.compress()
 
 
-# KZG Commitment (https://raw.githubusercontent.com/giuliop/plonk/main/kzg.py)
-# Curve order
-factorization = [
-    2**32,
-    3,
-    11,
-    19,
-    10177,
-    125527,
-    859267,
-    906349,
-    906349,
-    2508409,
-    2529403,
-    52437899,
-    254760293,
-    254760293,
-]
-q_1 = 1
-for f in factorization:
-    q_1 *= f
-assert q_1 == curve.curve_order - 1
-
-"""Code from giuliop/plonk"""
-
-
 # Use this
 def add_node_hash(node: VerkleNode):
     """
@@ -723,6 +767,26 @@ def add_node_hash(node: VerkleNode):
                 values[i] = int.from_bytes(node.children[i].hash, "little")
         node.commitment = kzg_utils.compute_commitment_lagrange(values)
         node.hash = hash(node.commitment.compress())
+
+
+def checkValidTree(root: VerkleNode):
+    """
+    From the root node, check if the verkle tree is valid
+    """
+    if root.node_type == NodeType.INNER:
+        values = {}
+        for i in range(WIDTH):
+            if root.children[i] is not None:
+                if root.children[i].hash == b"":
+                    add_node_hash(root.children[i])
+                values[i] = int.from_bytes(root.children[i].hash, "little")
+        commit = kzg_utils.compute_commitment_lagrange(values)
+
+        for i in range(WIDTH):
+            if root.children[i] is not None:
+                checkValidTree(root.children[i])
+    else:
+        assert root.hash == hash([root.key, root.value])
 
 
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
