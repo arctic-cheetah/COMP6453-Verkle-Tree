@@ -38,7 +38,9 @@ MODULUS = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
 primefield = PrimeField(MODULUS)
 ROOT_OF_UNITY = pow(PRIMITIVE_ROOT, (MODULUS - 1) // WIDTH, MODULUS)
 SETUP = generate_setup(WIDTH, SECRET)
-DOMAIN = np.array([pow(ROOT_OF_UNITY, i, MODULUS) for i in range(WIDTH)], dtype=np.object_)
+DOMAIN = np.array(
+    [pow(ROOT_OF_UNITY, i, MODULUS) for i in range(WIDTH)], dtype=np.object_
+)
 kzg_utils = KzgUtils(MODULUS, WIDTH, DOMAIN, SETUP, primefield)
 
 
@@ -184,7 +186,7 @@ class VerkleTree:
             old_leaf_key = currNode.key
             old_leaf_value = currNode.value
             # Replace the leaf with a new inner node
-            assert prevNode is not None, "prevNode should not be None"
+            assert prevNode is not None
             prevNode.children[currIndex] = VerkleNode(node_type=NodeType.INNER)
             # Re-insert both the old and new keys from the root.
             # This will correctly build the new branch under the new inner node.
@@ -226,8 +228,13 @@ class VerkleTree:
                         newIndex = next(indices)
                         oldIndex = self.getVerkleIndex(oldNode.key)[len(path)]
                         newInnerNode = VerkleNode(node_type=NodeType.INNER)
-                        # getting error here sometimes
-                        assert oldIndex != newIndex
+                        # If index is the same we need to split the node until
+                        # the indices are different
+                        # But ethereum's implementation did not do so
+                        # So we won't do it too.
+                        if newIndex == oldIndex:
+                            print("Insertion Error: Index Collision! Try again")
+                            return False
                         newInnerNode.children[newIndex] = newNode
                         newInnerNode.children[oldIndex] = oldNode
                         add_node_hash(newInnerNode)
@@ -269,6 +276,7 @@ class VerkleTree:
                 + int.from_bytes(newHash, "little")
                 - int.from_bytes(oldHash, "little")
             ) % MODULUS
+        return True
 
     def getVerkleIndex(self, key: bytes) -> Tuple[int]:
         """
@@ -297,12 +305,14 @@ class VerkleTree:
         D = blst.P1(D_serialized)
         sigma = blst.P1(sigma_serialized)
 
-        ys_bytes = [val.to_bytes(32, 'little') for val in ys]
+        ys_bytes = [val.to_bytes(32, "little") for val in ys]
 
         # Step 1
         r = (
             hash_to_int(
-                [hash(C.compress()) for C in Cs] + ys_bytes + [kzg_utils.DOMAIN[i] for i in indices]
+                [hash(C.compress()) for C in Cs]
+                + ys_bytes
+                + [kzg_utils.DOMAIN[i] for i in indices]
             )
             % MODULUS
         )
@@ -358,7 +368,9 @@ class VerkleTree:
         # Step 1: Construct g(X) polynomial in evaluation form
         r = (
             hash_to_int(
-                [hash(C) for C in Cs] + [y.to_bytes(32, "little") for y in ys] + [kzg_utils.DOMAIN[i] for i in indices]
+                [hash(C) for C in Cs]
+                + [y.to_bytes(32, "little") for y in ys]
+                + [kzg_utils.DOMAIN[i] for i in indices]
             )
             % MODULUS
         )
@@ -497,7 +509,7 @@ class VerkleTree:
         )
         for node in nodesSortedByIndexAndSubIndex:
             if node.node_type == NodeType.LEAF:
-                assert False # should never happen
+                assert False  # should never happen
                 fs.append(int.from_bytes(node.value, "little"))
             else:
                 fs.append(
