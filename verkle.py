@@ -2,7 +2,7 @@ from enum import Enum
 from hashlib import sha256
 import hashlib
 from py_ecc.optimized_bls12_381 import optimized_curve as curve, pairing
-from verkle_trie.kzg_utils import KzgUtils
+from kzg_utils import KzgUtils
 import kzg_utils
 from fft import fft
 from poly_utils import PrimeField
@@ -310,7 +310,7 @@ class VerkleTree:
         # log_time_if_eligible("   Computed r hash", 30, display_times)
 
         # Step 2
-        t = hash_to_int([r, D.compress()])
+        t = hash_to_int([r, D]) % MODULUS
         E_coefficients = []
         g_2_of_t = 0
         power_of_r = 1
@@ -330,7 +330,7 @@ class VerkleTree:
         # Step 3 (Check KZG proofs)
         w = (y - g_2_of_t) % MODULUS
 
-        q = hash_to_int([E.compress(), D.compress, y.to_bytes(32, 'little'), w.to_bytes(32, 'little')])
+        q = hash_to_int([E, D, y, w])
 
         if not kzg_utils.check_kzg_proof(
             E.dup().add(D.dup().mult(q)), t, (y + q * w) % MODULUS, sigma
@@ -540,7 +540,6 @@ class VerkleTree:
         proof: Proof,
         displayTime: bool = False,
     ):
-        print(f"Checking verkle proof for keys: {int.from_bytes(keys[0], 'little')} and values: {int.from_bytes(values[0], 'little')}")
         # Reconstruct commitments list
         commitSortByIndex = [blst.P1(rootCommit)] + [
             blst.P1(c) for c in proof.commitsSortedByIndex
@@ -552,16 +551,13 @@ class VerkleTree:
 
         # Find all required indices
         for key, value, depth in zip(keys, values, proof.depths):
-            print(f"finding indices for key {int.from_bytes(key, 'little')}")
             verkleIndex = self.getVerkleIndex(key)
-            print(f"verkleIndex got: {verkleIndex}")
             for i in range(depth):
                 everyIndices.add(verkleIndex[:i])
                 IndicesAndSubIndicies.add((verkleIndex[:i], verkleIndex[i]))
             leafValByIndexSubIndex[
                 (verkleIndex[: depth - 1], verkleIndex[depth - 1])
             ] = hash([key, value])
-            print(f"================================")
 
         everyIndices = sorted(everyIndices)
         IndicesAndSubIndicies = sorted(IndicesAndSubIndicies)
@@ -572,12 +568,10 @@ class VerkleTree:
             index: commitment
             for index, commitment in zip(everyIndices, commitSortByIndex)
         }
-        print(f"commitsByIndex got: {commitsByIndex}")
         commitsByIndexAndSubIndex = {
             IndexAndSubIndex: commitsByIndex[IndexAndSubIndex[0]]
             for IndexAndSubIndex in IndicesAndSubIndicies
         }
-        print(f"commitsByIndexAndSubIndex got: {commitsByIndexAndSubIndex}")
 
         subhashes_by_IndexAndSubIndex = {}
         for IndexAndSubIndex in IndicesAndSubIndicies:
