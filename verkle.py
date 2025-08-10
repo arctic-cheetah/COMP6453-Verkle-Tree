@@ -330,7 +330,7 @@ class VerkleTree:
         return tuple(np.array(list(reversed(indices)), dtype=int))
 
 
-    def check_kzg_multiproof(self, Cs, indices, ys, proof, display_times=False):
+    def check_kzg_multiproof(self, Cs, indices, ys, proof):
         """
         Verify a KZG multiproof according to the schema described in:
         https://dankradfeist.de/ethereum/2021/06/18/pcs-multiproofs.html
@@ -340,7 +340,6 @@ class VerkleTree:
             indices: List of indices
             ys: List of y-values
             proof: Tuple containing (D_serialized, y, sigma_serialized)
-            display_times: Whether to display timing information
             
         Returns:
             True if proof is valid, False otherwise
@@ -388,7 +387,7 @@ class VerkleTree:
 
         return True
 
-    def make_kzg_multiproof(self, Cs, fs, indices, ys, display_times=True):
+    def make_kzg_multiproof(self, Cs, fs, indices, ys):
         """
         Compute a KZG multiproof according to the schema described in:
         https://dankradfeist.de/ethereum/2021/06/18/pcs-multiproofs.html
@@ -398,7 +397,6 @@ class VerkleTree:
             fs: List of polynomials
             indices: List of indices
             ys: List of y-values
-            display_times: Whether to display timing information
             
         Returns:
             Tuple containing (D_serialized, y, sigma_serialized)
@@ -478,7 +476,7 @@ class VerkleTree:
         return path, None
 
     def make_verkle_proof(
-        self, tree: "VerkleTree", keys: List[bytes], display_times=False
+        self, tree: "VerkleTree", keys: List[bytes]
     ) -> Proof:
         """
         Create a proof for the given keys in the Verkle tree.
@@ -486,7 +484,6 @@ class VerkleTree:
         Args:
             tree: The Verkle tree to create proof for
             keys: List of keys to include in the proof
-            display_times: Whether to display timing information
             
         Returns:
             Proof object containing all necessary data for verification
@@ -568,7 +565,7 @@ class VerkleTree:
                 )
 
         polySerialised, challenge, compressedMultiProof = self.make_kzg_multiproof(
-            Cs, fs, indices, ys, display_times
+            Cs, fs, indices, ys
         )
         commitsSortedIndexSerialised = np.array(
             [x.commitment.compress() for x in nodesSortedByIndex[1:]], dtype=np.object_
