@@ -236,6 +236,7 @@ The implementation uses the KZG (Kate-Zaverucha-Goldberg) commitment scheme for 
 ### Common Issues
 
 1. **Import Errors**: Ensure you're using Python 3.10 and the virtual environment is activated
+2. **Lint Libray Issues** Ensure you are using Python Select Interpretor as Python 3.10
 
 ### Debugging
 
