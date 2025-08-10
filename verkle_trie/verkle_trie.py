@@ -778,7 +778,7 @@ if __name__ == "__main__":
     all_keys = list(values.keys())
     shuffle(all_keys)
 
-    keys_in_proof = all_keys[:NUMBER_KEYS_PROOF]
+    keys_in_proof = [all_keys[4]]
 
     time_a = time()
     proof = make_verkle_proof(root, keys_in_proof)
@@ -804,7 +804,7 @@ if __name__ == "__main__":
     time_b = time()
     check_time = time_b - time_a
     print(res)
-    print("Checked proof in {0:.3f} s".format(time_b - time_a), file=sys.stderr)
+    print(f"Checked proof for key {int.from_bytes(all_keys[4], 'little')} in n/a s, giving {res}")
 
     print(
         "{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}".format(

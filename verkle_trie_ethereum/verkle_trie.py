@@ -683,6 +683,7 @@ if __name__ == "__main__":
 
     print("Computed verkle root in {0:.3f} s".format(time_b - time_a), file=sys.stderr)
 
+    key_list = []
     if NUMBER_ADDED_KEYS > 0:
 
         time_a = time()
@@ -699,6 +700,7 @@ if __name__ == "__main__":
             value = randint(0, 2**256 - 1).to_bytes(32, "little")
             update_verkle_node(root, key, value)
             values[key] = value
+            key_list.append(key)
         time_y = time()
 
         print(
@@ -722,7 +724,7 @@ if __name__ == "__main__":
             "[Checked tree valid: {0:.3f} s]".format(time_b - time_a), file=sys.stderr
         )
 
-    if NUMBER_DELETED_KEYS > 0:
+    if 0 > 0:
 
         all_keys = list(values.keys())
         shuffle(all_keys)
@@ -759,11 +761,15 @@ if __name__ == "__main__":
     all_keys = list(values.keys())
     shuffle(all_keys)
 
-    keys_in_proof = all_keys[:NUMBER_KEYS_PROOF]
+    print(f"what are all keys: \n{all_keys[:10]}", file=sys.stderr)
+    assert 0 == 1
+    # my addition
+    keys_in_proof = [key_list[4]]
 
     time_a = time()
     proof = make_verkle_proof(root, keys_in_proof)
     time_b = time()
+    print("Computed verkle for {0} proof in {1:.3f} s".format( int.from_bytes(key_list[4], 'little'), time_b - time_a), file=sys.stderr)
 
     proof_size = get_proof_size(proof)
     proof_time = time_b - time_a
@@ -776,26 +782,27 @@ if __name__ == "__main__":
     )
 
     time_a = time()
-    check_verkle_proof(
+    res = check_verkle_proof(
         root["commitment"].compress(),
-        keys_in_proof,
+        [key_list[4]],
         [values[key] for key in keys_in_proof],
         proof,
     )
     time_b = time()
     check_time = time_b - time_a
 
-    print("Checked proof in {0:.3f} s".format(time_b - time_a), file=sys.stderr)
+    print(f"got result for checking key {key_list[4]} as {res}")
+    # print("Checked proof in {0:.3f} s".format(time_b - time_a), file=sys.stderr)
 
-    print(
-        "{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}".format(
-            WIDTH_BITS,
-            WIDTH,
-            NUMBER_INITIAL_KEYS,
-            NUMBER_KEYS_PROOF,
-            average_depth,
-            proof_size,
-            proof_time,
-            check_time,
-        )
-    )
+    # print(
+    #     "{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}".format(
+    #         WIDTH_BITS,
+    #         WIDTH,
+    #         NUMBER_INITIAL_KEYS,
+    #         NUMBER_KEYS_PROOF,
+    #         average_depth,
+    #         proof_size,
+    #         proof_time,
+    #         check_time,
+    #     )
+    # )

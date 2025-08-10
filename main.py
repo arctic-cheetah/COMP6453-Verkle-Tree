@@ -11,18 +11,24 @@ NUMBER_KEYS_PROOF = 5000
 
 
 def main():
-    tree = VerkleTree()
+    key_len = 16
+    width_bits = 4
+    tree = VerkleTree(key_len, width_bits) 
     values = {}
     keys = []
-    upper_limit = 2**256 - 1
-    # This part is fine
+    upper_limit = 2**key_len - 1
+    keys_set = set()
+    length_of_bytes = (key_len + 7) // 8
+    # This part is fine 
     time_a = time()
-    for i in range(NUMBER_INITIAL_KEYS):
-        key = randint(0, upper_limit).to_bytes(32, "little")
-        value = randint(0, upper_limit).to_bytes(32, "little")
+    for _ in range(NUMBER_INITIAL_KEYS):
+        # old values
+        key = randint(0, upper_limit).to_bytes(length_of_bytes, "little")
+        value = randint(0, upper_limit).to_bytes(length_of_bytes, "little")
         tree.insert(tree.root, key, value)
         values[key] = value
         keys.append(key)
+        keys_set.add(key)
     time_b = time()
     print(
         "Inserted {0} elements in {1:.3f}s".format(
@@ -32,43 +38,21 @@ def main():
 
     # Inserted
     time_a = time()
-    add_node_hash(tree.root)
+    add_node_hash(tree.kzg_utils, tree.root)
     # add_node_hash_parallel(tree.root)
     time_b = time()
     print("Computed verkle root (insert) in {0:.3f}s".format(time_b - time_a))
-
-    
-    
-    # This returns True as it should
-    # proof_for_definitely_existing_key = tree.make_verkle_proof(tree, [keys[4]])
-    # print(
-    #     "Computed proof for definitely existing key {0} as Proof:\n\t {1}".format(
-    #         int.from_bytes(keys[4], "little"), proof_for_definitely_existing_key
-    #     )
-    # )
-
-    # res = tree.check_verkle_proof(
-    #     tree.root.commitment.compress(),
-    #     [keys[4]],
-    #     [values[keys[4]]],
-    #     proof_for_definitely_existing_key,
-    #     False,
-    # )
-    # print(
-    #     "Computed verification for definitely existing key {0} with Success: {1}".format(
-    #         int.from_bytes(keys[4], "little"), res
-    # ))   
-
 
     # This part is fine
     key_list = []
     time_a = time()
     for _ in range(NUMBER_ADDED_KEYS):
-        key = randint(0, upper_limit).to_bytes(32, "little")
+        key = randint(0, upper_limit).to_bytes(length_of_bytes, "little")
         key_list.append(key)
-        value = randint(0, upper_limit).to_bytes(32, "little")
+        value = randint(0, upper_limit).to_bytes(length_of_bytes, "little")
         tree.insert_update_node(key, value)
         values[key] = value
+        keys_set.add(key)
     time_b = time()
 
     print(
@@ -79,7 +63,7 @@ def main():
 
     # Inserted
     time_a = time()
-    add_node_hash(tree.root)
+    add_node_hash(tree.kzg_utils, tree.root)
     # add_node_hash_parallel(tree.root)
     time_b = time()
     print("Computed verkle root (insert_and_update) in {0:.3f}s".format(time_b - time_a))
@@ -100,6 +84,33 @@ def main():
         tree.root.commitment.compress(),
         key_list[:NUMBER_KEYS_PROOF],
         [values[k] for k in key_list[:NUMBER_KEYS_PROOF]],
+        proof,
+        False,
+    )
+    time_b = time()
+    print("Computed verification for with Success: {0} in {1:.3f}s".format(res, time_b - time_a))
+
+    print(f"\n\n====Tunning for False verification====")
+    false_key = randint(0, upper_limit).to_bytes(length_of_bytes, "little")
+    while false_key in keys_set:
+        false_key = randint(0, upper_limit).to_bytes(length_of_bytes, "little")
+    
+    time_a = time()
+    proof = tree.make_verkle_proof(tree, [false_key])
+    time_b = time()
+    print(
+        "Computed proof for {0} in {1:.3f}s".format(
+            NUMBER_KEYS_PROOF, time_b - time_a
+        )
+    )
+
+    # Verify the proof
+    # print(key_list[:])
+    time_a = time()
+    res = tree.check_verkle_proof(
+        tree.root.commitment.compress(),
+        [false_key],
+        [randint(0, upper_limit).to_bytes(32, "little")],
         proof,
         False,
     )

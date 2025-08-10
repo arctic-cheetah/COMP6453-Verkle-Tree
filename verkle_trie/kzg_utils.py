@@ -100,6 +100,8 @@ class KzgUtils:
             )
         )
 
+        print(f"Printing type of pairing: {dir(blst.PT)}")
+
         return pairing.final_exp().is_one()
 
     def evaluate_and_compute_kzg_proof(self, f, z):

@@ -13,6 +13,10 @@ from typing import *
 import numpy as np
 
 NUMBER_KEYS_PROOF = 5000
+MODULUS = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
+PRIMITIVE_ROOT = 7
+# Need to do ouble handling for branch factor ((MODULUS - 1) // 2**8)
+ROOT_OF_UNITY = pow(PRIMITIVE_ROOT, (MODULUS - 1) // 2**4, MODULUS)
 
 
 def generate_setup(size, secret) -> Dict[str, List[blst.P1 | blst.P2]]:
@@ -28,39 +32,36 @@ def generate_setup(size, secret) -> Dict[str, List[blst.P1 | blst.P2]]:
     return {"g1": g1_setup, "g2": g2_setup, "g1_lagrange": g1_lagrange}
 
 
-SECRET = 8927347823478352432985
-KEY_LEN = 256
-WIDTH_BITS = 8
-# Width is the branch factor
-WIDTH = 2**WIDTH_BITS
-PRIMITIVE_ROOT = 7
-MODULUS = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
-primefield = PrimeField(MODULUS)
-ROOT_OF_UNITY = pow(PRIMITIVE_ROOT, (MODULUS - 1) // WIDTH, MODULUS)
-SETUP = generate_setup(WIDTH, SECRET)
-DOMAIN = np.array([pow(ROOT_OF_UNITY, i, MODULUS) for i in range(WIDTH)], dtype=np.object_)
-kzg_utils = KzgUtils(MODULUS, WIDTH, DOMAIN, SETUP, primefield)
-
 
 """
 A hash function for bytes, integers and blst.P1 objects.
-If the input is a list, then hash each element and concatenate the results"""
+If the input is a list, then hash each element and concatenate the results
+"""
 
 
 def hash(x):
+
     if isinstance(x, bytes):
         return hashlib.sha256(x).digest()
+    elif isinstance(x, int):
+        # encode as fixed 32 bytes (little-endian) before hashing
+        return hashlib.sha256(x.to_bytes(32, "little", signed=False)).digest()
     elif isinstance(x, blst.P1):
         return hash(x.compress())
-    b = b""
-    for a in x:
-        if isinstance(a, bytes):
-            b += a
-        elif isinstance(a, int):
-            b += a.to_bytes(32, "little")
-        elif isinstance(a, blst.P1):
-            b += hash(a.compress())
-    return hash(b)
+    elif isinstance(x, (list, tuple, np.ndarray)):
+        b = b""
+        for a in x:
+            if isinstance(a, bytes):
+                b += a
+            elif isinstance(a, int):
+                b += a.to_bytes(32, "little", signed=False)
+            elif isinstance(a, blst.P1):
+                b += hash(a.compress())
+            else:
+                raise TypeError(f"Unsupported type in hash list: {type(a)}")
+        return hashlib.sha256(b).digest()
+    else:
+        raise TypeError(f"Unsupported type for hash(): {type(x)}")
 
 
 # helper function
@@ -122,30 +123,32 @@ class NodeType(Enum):
 
 
 class VerkleTree:
-    # Verkle Trie parameters kept the same as Ethereum's implementation
-    KEY_LEN = 256
-    WIDTH_BITS = 8
-    WIDTH = 2**WIDTH_BITS
-    PRIMITIVE_ROOT = 7
-    MODULUS = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
-    primefield = PrimeField(MODULUS)
-    branch_factor = -1
-    ROOT_OF_UNITY = pow(PRIMITIVE_ROOT, (MODULUS - 1) // WIDTH, MODULUS)
-    DOMAIN = np.array([], dtype=object)
-    root: "VerkleNode" = None
 
     # Empty || Leaf(Key, Value) || Node(Commitment, Children)
     def __init__(
         self,
+        KEY_LEN: int = 256,
+        WIDTH_BITS: int = 8,
     ):
-        self.DOMAIN = np.array(
-            [pow(self.ROOT_OF_UNITY, i, self.MODULUS) for i in range(self.WIDTH)]
-        )
-        self.branch_factor = KEY_LEN // WIDTH_BITS
+        self.KEY_LEN = KEY_LEN
+        self.WIDTH_BITS = WIDTH_BITS
+        self.WIDTH = 2**WIDTH_BITS
+        self.branch_factor = self.WIDTH # 2**WIDTH_BITS children
         # one SRS for all nodes
         # self.srs = generate_setup(branch_factor)
         # making an empty node
-        self.root = VerkleNode(self.branch_factor, NodeType.INNER)
+        self.root = VerkleNode(self.branch_factor, node_type=NodeType.INNER)
+        self.SECRET = 8927347823478352432985
+        self.PRIMITIVE_ROOT = 7
+        self.MODULUS = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
+        self.primefield = PrimeField(self.MODULUS)
+        self.ROOT_OF_UNITY = pow(self.PRIMITIVE_ROOT, (self.MODULUS - 1) // self.branch_factor, self.MODULUS)
+        self.DOMAIN = np.array(
+            [pow(self.ROOT_OF_UNITY, i, self.MODULUS) for i in range(self.WIDTH)]
+        )
+        self.SETUP = generate_setup(self.branch_factor, self.SECRET)
+        self.DOMAIN = np.array([pow(self.ROOT_OF_UNITY, i, self.MODULUS) for i in range(self.branch_factor)], dtype=np.object_)
+        self.kzg_utils = KzgUtils(self.MODULUS, self.branch_factor, self.DOMAIN, self.SETUP, self.primefield)
 
     def insert(self, currRoot: "VerkleNode", key: bytes, value: bytes):
         """
@@ -164,7 +167,7 @@ class VerkleTree:
             else:
                 # when the child is none, just insert a new node here
                 currNode.children[currIndex] = VerkleNode(
-                    KEY_LEN, value, key, NodeType.LEAF
+                    self.branch_factor, value, key, NodeType.LEAF
                 )
                 return
 
@@ -172,12 +175,6 @@ class VerkleTree:
         if currNode.key == key:
             currNode.value = value
         else:
-            # # Split the node
-            # newInnerNode = VerkleNode(node_type=NodeType.INNER)
-            # prevNode.children[currIndex] = newInnerNode
-            # self.insert(newInnerNode, key, value)
-            # self.insert(newInnerNode, currNode.key, currNode.value)
-
             # Key collision (different keys map to the same path)
             # We need to split the leaf node.
             # Keep the old leaf's data
@@ -185,7 +182,7 @@ class VerkleTree:
             old_leaf_value = currNode.value
             # Replace the leaf with a new inner node
             assert prevNode is not None, "prevNode should not be None"
-            prevNode.children[currIndex] = VerkleNode(node_type=NodeType.INNER)
+            prevNode.children[currIndex] = VerkleNode(self.branch_factor, node_type=NodeType.INNER)
             # Re-insert both the old and new keys from the root.
             # This will correctly build the new branch under the new inner node.
             self.insert(self.root, key, value)
@@ -198,7 +195,7 @@ class VerkleTree:
         # descend and allocate internal nodes
         # valueChange: int = -1
         path: List[Tuple[int, VerkleNode]] = []
-        add_node_hash(newNode)
+        add_node_hash(self.kzg_utils, newNode)
 
         while True:
             index = next(indices)
@@ -214,29 +211,29 @@ class VerkleTree:
                         node.children[index] = newNode
                         valueChange = (
                             hash(
-                                MODULUS
+                                self.MODULUS
                                 + int.from_bytes(newNode.hash, "little")
                                 - int.from_bytes(oldNode.hash, "little")
                             )
-                            % MODULUS
+                            % self.MODULUS
                         )
                         break
                     # 2) No, Then split the node
                     else:
                         newIndex = next(indices)
                         oldIndex = self.getVerkleIndex(oldNode.key)[len(path)]
-                        newInnerNode = VerkleNode(node_type=NodeType.INNER)
+                        newInnerNode = VerkleNode(self.branch_factor, node_type=NodeType.INNER)
                         # getting error here sometimes
                         assert oldIndex != newIndex
                         newInnerNode.children[newIndex] = newNode
                         newInnerNode.children[oldIndex] = oldNode
-                        add_node_hash(newInnerNode)
+                        add_node_hash(self.kzg_utils, newInnerNode)
                         node.children[index] = newInnerNode
                         valueChange = (
-                            MODULUS
+                            self.MODULUS
                             + int.from_bytes(newInnerNode.hash, "little")
                             - int.from_bytes(oldNode.hash, "little")
-                        ) % MODULUS
+                        ) % self.MODULUS
                         # newIndex = self.getVerkleIndex(oldNode
                         # Make a new inner node and place the old and new leaf under the
                         break
@@ -245,7 +242,7 @@ class VerkleTree:
             else:
                 # It is empty so just add it
                 node.children[index] = newNode
-                valueChange = int.from_bytes(newNode.hash, "little") % MODULUS
+                valueChange = int.from_bytes(newNode.hash, "little") % self.MODULUS
                 break
                 # Just insert at the inner node location
 
@@ -255,7 +252,7 @@ class VerkleTree:
             # print("Before: " + str(currNode.commitment.compress()))
 
             currNode.commitment = currNode.commitment.add(
-                SETUP["g1_lagrange"][index].dup().mult(valueChange)
+                self.SETUP["g1_lagrange"][index].dup().mult(valueChange)
             )
             currNode.commitmentCompressed = currNode.commitment.compress()
             # print("After: " + str(currNode.commitment.compress()))
@@ -265,25 +262,28 @@ class VerkleTree:
             newHash = hash(currNode.commitment)
             currNode.hash = newHash
             valueChange = (
-                MODULUS
+                self.MODULUS
                 + int.from_bytes(newHash, "little")
                 - int.from_bytes(oldHash, "little")
-            ) % MODULUS
+            ) % self.MODULUS
 
     def getVerkleIndex(self, key: bytes) -> Tuple[int]:
         """
         Generates the list of verkle indices for key
         """
-        x = int.from_bytes(key, "big")
-        last_index_bits = KEY_LEN % WIDTH_BITS
-        index = (x % (2**last_index_bits)) << (WIDTH_BITS - last_index_bits)
-        x //= 2**last_index_bits
-        indices = [index]
-        for _ in range((KEY_LEN - 1) // WIDTH_BITS):
-            index = x % WIDTH
-            x //= WIDTH
-            indices.append(index)
-        return tuple(np.array(list(reversed(indices)), dtype=int))
+        width = self.branch_factor          # == 2**self.WIDTH_BITS
+        depth = (self.KEY_LEN + self.WIDTH_BITS - 1) // self.WIDTH_BITS
+        mask = (1 << self.KEY_LEN) - 1
+        x = int.from_bytes(key, "little") & mask  # match main.py
+
+        # collect base-WIDTH digits LSB-first
+        digits = []
+        for _ in range(depth):
+            digits.append(x % width)
+            x //= width
+
+        # return MSB-first for top-down traversal
+        return tuple(reversed(digits))
 
     def root_commit(self):
         return self.root.commitment
@@ -302,24 +302,24 @@ class VerkleTree:
         # Step 1
         r = (
             hash_to_int(
-                [hash(C.compress()) for C in Cs] + ys_bytes + [kzg_utils.DOMAIN[i] for i in indices]
+                [hash(C.compress()) for C in Cs] + ys_bytes + [self.kzg_utils.DOMAIN[i] for i in indices]
             )
-            % MODULUS
+            % self.MODULUS
         )
 
         # log_time_if_eligible("   Computed r hash", 30, display_times)
 
         # Step 2
-        t = hash_to_int([r, D]) % MODULUS
+        t = hash_to_int([r, D]) % self.MODULUS
         E_coefficients = []
         g_2_of_t = 0
         power_of_r = 1
 
         for index, y_val in zip(indices, ys):
-            E_coefficient = primefield.div(power_of_r, (t - DOMAIN[index]) % MODULUS)
+            E_coefficient = self.primefield.div(power_of_r, (t - self.DOMAIN[index]) % self.MODULUS)
             E_coefficients.append(E_coefficient)
-            g_2_of_t = (g_2_of_t + E_coefficient * y_val) % MODULUS
-            power_of_r = (power_of_r * r) % MODULUS
+            g_2_of_t = (g_2_of_t + E_coefficient * y_val) % self.MODULUS
+            power_of_r = (power_of_r * r) % self.MODULUS
 
         # log_time_if_eligible("   Computed g2 and e coeffs", 30, display_times)
 
@@ -328,12 +328,12 @@ class VerkleTree:
         # log_time_if_eligible("  Computed E commitment", 30, display_times)
 
         # Step 3 (Check KZG proofs)
-        w = (y - g_2_of_t) % MODULUS
+        w = (y - g_2_of_t) % self.MODULUS
 
         q = hash_to_int([E, D, y, w])
 
-        if not kzg_utils.check_kzg_proof(
-            E.dup().add(D.dup().mult(q)), t, (y + q * w) % MODULUS, sigma
+        if not self.kzg_utils.check_kzg_proof(
+            E.dup().add(D.dup().mult(q)), t, (y + q * w) % self.MODULUS, sigma
         ):
             return False
 
@@ -358,50 +358,50 @@ class VerkleTree:
         # Step 1: Construct g(X) polynomial in evaluation form
         r = (
             hash_to_int(
-                [hash(C) for C in Cs] + [y.to_bytes(32, "little") for y in ys] + [kzg_utils.DOMAIN[i] for i in indices]
+                [hash(C) for C in Cs] + [y.to_bytes(32, "little") for y in ys] + [self.kzg_utils.DOMAIN[i] for i in indices]
             )
-            % MODULUS
+            % self.MODULUS
         )
 
         # log_time_if_eligible("   Hashed to r", 30, display_times)
 
-        g = np.zeros(WIDTH, dtype=np.object_)
+        g = np.zeros(self.branch_factor, dtype=np.object_)
         power_of_r = 1
         for f, index in zip(fs, indices):
-            quotient = kzg_utils.compute_inner_quotient_in_evaluation_form(f, index)
+            quotient = self.kzg_utils.compute_inner_quotient_in_evaluation_form(f, index)
             quotient = np.array(quotient, dtype=np.object_)
             g = g + (power_of_r * quotient)
-            power_of_r = power_of_r * r % MODULUS
+            power_of_r = power_of_r * r % self.MODULUS
 
         # log_time_if_eligible("   Computed g polynomial", 30, display_times)
 
-        D = kzg_utils.compute_commitment_lagrange({i: v for i, v in enumerate(g)})
+        D = self.kzg_utils.compute_commitment_lagrange({i: v for i, v in enumerate(g)})
 
         # log_time_if_eligible("   Computed commitment D", 30, display_times)
 
         # Step 2: Compute h in evaluation form
 
-        t = hash_to_int([r, D]) % MODULUS
+        t = hash_to_int([r, D]) % self.MODULUS
 
-        h = np.zeros(WIDTH, dtype=np.object_)
+        h = np.zeros(self.branch_factor, dtype=np.object_)
         power_of_r = 1
 
         for f, index in zip(fs, indices):
-            denominator_inv = primefield.inv((t - DOMAIN[index]) % MODULUS)
+            denominator_inv = self.primefield.inv((t - self.DOMAIN[index]) % self.MODULUS)
             f_arr = np.array(f, dtype=np.object_)
-            h = (h + (power_of_r * f_arr * denominator_inv)) % MODULUS
-            power_of_r = power_of_r * r % MODULUS
+            h = (h + (power_of_r * f_arr * denominator_inv)) % self.MODULUS
+            power_of_r = power_of_r * r % self.MODULUS
 
         # log_time_if_eligible("   Computed h polynomial", 30, display_times)
 
         # Step 3: Evaluate and compute KZG proofs
 
-        y, pi = kzg_utils.evaluate_and_compute_kzg_proof(h, t)
-        w, rho = kzg_utils.evaluate_and_compute_kzg_proof(g, t)
+        y, pi = self.kzg_utils.evaluate_and_compute_kzg_proof(h, t)
+        w, rho = self.kzg_utils.evaluate_and_compute_kzg_proof(g, t)
 
         # Compress both proofs into one
 
-        E = kzg_utils.compute_commitment_lagrange({i: v for i, v in enumerate(h)})
+        E = self.kzg_utils.compute_commitment_lagrange({i: v for i, v in enumerate(h)})
         q = hash_to_int([E, D, y, w])
         sigma = pi.dup().add(rho.dup().mult(q))
 
@@ -437,12 +437,14 @@ class VerkleTree:
         """
         # Step 0: Find all keys in the trie
         #
+        assert (len(tree.root.children) == tree.branch_factor) if tree.root.node_type == NodeType.INNER else True
         nodesByIndex = {}
         nodesByIndexSubIndex = {}
         values: np.ndarray = np.array([], dtype=object)
         depths: np.ndarray = np.array([], dtype=int)
         for key in keys:
             path, node = self.find_node_with_path(tree.root, key)
+            assert (len(node.children) == tree.branch_factor) if (node and node.node_type == NodeType.INNER) else True
             depths = np.append(depths, len(path))
             values = np.append(
                 values,
@@ -452,7 +454,8 @@ class VerkleTree:
                     else None
                 ),
             )
-            for index, subindex, node in path:  # TODO: CHECK line 447 OR 440 for bug!
+            for index, subindex, node in path:
+                assert (len(node.children) == tree.branch_factor) if (node and node.node_type == NodeType.INNER) else True
                 nodesByIndex[index] = node
                 nodesByIndexSubIndex[(index, subindex)] = node
         # log_time_if_eligible("   Computed key paths", 30, display_times)
@@ -508,7 +511,7 @@ class VerkleTree:
                                 if node.children[i] is not None
                                 else 0
                             )
-                            for i in range(WIDTH)
+                            for i in range(self.branch_factor)
                         ],
                         dtype=object,
                     )
@@ -563,7 +566,6 @@ class VerkleTree:
         IndicesAndSubIndicies = sorted(IndicesAndSubIndicies)
 
         # create the commitment list and sort them by index
-        # TODO: possibly improve this code below:
         commitsByIndex = {
             index: commitment
             for index, commitment in zip(everyIndices, commitSortByIndex)
@@ -630,7 +632,7 @@ class NodeType(Enum):
 class VerkleNode:
     # TODO: THIS IS POTENTIAL OF SPACE COMPLEXITY COST HERE BECAUSE LIST[NONE] *256
     # children: List["VerkleNode"] = [None] * VerkleTree.KEY_LEN
-    children: np.ndarray = np.array([None] * VerkleTree.KEY_LEN, dtype=object)
+    children: np.ndarray = np.array([None], dtype=object)
 
     commitment: blst.P1 = blst.G1().mult(0)
     commitmentCompressed: bytes = b""
@@ -644,7 +646,7 @@ class VerkleNode:
     # Value is the value at the leaf node, or None for non-leaf nodes.
     def __init__(
         self,
-        branch_factor: int = KEY_LEN,
+        branch_factor: int = 256,
         value: bytes = None,
         key: bytes = None,
         node_type: NodeType = NodeType.INNER,
@@ -655,10 +657,10 @@ class VerkleNode:
         If value is None, it is a non-leaf node and children will be initialized.
         """
         self.key = key
-        self.branch_factor = KEY_LEN
+        self.branch_factor = branch_factor
         self.value = value
         if node_type == NodeType.INNER:
-            self.children = np.array([None] * KEY_LEN, dtype=object)
+            self.children = np.array([None] * self.branch_factor, dtype=object)
         else:
             self.children = None
 
@@ -694,7 +696,7 @@ assert q_1 == curve.curve_order - 1
 
 
 # Use this
-def add_node_hash(node: VerkleNode):
+def add_node_hash(kzg_utils, node: VerkleNode):
     """
     DONE:
     Recursively adds all missing commitments and hashes to a verkle trie structure.
@@ -704,56 +706,13 @@ def add_node_hash(node: VerkleNode):
         node.hash = hash([node.key, node.value])
     if node.node_type == NodeType.INNER:
         values = {}
-        for i in range(WIDTH):
+        for i in range(node.branch_factor):
             if node.children[i] is not None:
                 if node.children[i].hash == b"":
-                    add_node_hash(node.children[i])
+                    add_node_hash(kzg_utils, node.children[i])
                 values[i] = int.from_bytes(node.children[i].hash, "little")
         node.commitment = kzg_utils.compute_commitment_lagrange(values)
         node.hash = hash(node.commitment.compress())
 
 
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-
-# Parallel processing confers no advantage here
-
-
-# def add_node_hash_parallel(node: VerkleNode, max_workers=8):
-#     """
-#     Recursively adds all missing commitments and hashes to a verkle trie structure in parallel.
-#     """
-#     if node.node_type == NodeType.LEAF:
-#         node.hash = hash([node.key, node.value])
-#         return
-
-#     if node.node_type == NodeType.INNER:
-#         values = {}
-#         futures = []
-#         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-#             for i in range(WIDTH):
-#                 child = node.children[i]
-#                 if child is not None:
-#                     if child.hash == b"":
-#                         futures.append(
-#                             executor.submit(add_node_hash_parallel, child, max_workers)
-#                         )
-#             for future in as_completed(futures):
-#                 future.result()
-#             for i in range(WIDTH):
-#                 child = node.children[i]
-#                 if child is not None:
-#                     values[i] = int.from_bytes(child.hash, "little")
-#         node.commitment = kzg_utils.compute_commitment_lagrange(values)
-#         node.hash = hash(node.commitment.compress())
-#         node.commitment = kzg_utils.compute_commitment_lagrange(values)
-#         node.hash = hash(node.commitment.compress())
-#             for future in as_completed(futures):
-#                 future.result()
-#             for i in range(WIDTH):
-#                 child = node.children[i]
-#                 if child is not None:
-#                     values[i] = int.from_bytes(child.hash, "little")
-#         node.commitment = kzg_utils.compute_commitment_lagrange(values)
-#         node.hash = hash(node.commitment.compress())
-#         node.commitment = kzg_utils.compute_commitment_lagrange(values)
-#         node.hash = hash(node.commitment.compress())
