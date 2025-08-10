@@ -22,6 +22,7 @@ def generate_setup(size, secret) -> Dict[str, List[blst.P1 | blst.P2]]:
     Where G1 is the polynomial commitment group and G2 is the pairing group
     as well as the Lagrange polynomials in G1 (via FFT)
     """
+
     g1_setup = np.array([blst.G1().mult(pow(secret, i, MODULUS)) for i in range(size)])
     g2_setup = np.array([blst.G2().mult(pow(secret, i, MODULUS)) for i in range(size)])
     g1_lagrange = np.array(fft(g1_setup, MODULUS, ROOT_OF_UNITY, inv=True))
