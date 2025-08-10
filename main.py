@@ -102,8 +102,7 @@ def main():
         tree.root.commitment.compress(),
         key_list[:NUMBER_KEYS_PROOF],
         [values[k] for k in key_list[:NUMBER_KEYS_PROOF]],
-        proof,
-        False,
+        proof
     )
     time_b = time()
     print(
@@ -115,8 +114,7 @@ def main():
         tree.root.commitment.compress(),
         key_list[:2],
         [values[k] for k in key_list[:2]],
-        proof,
-        False,
+        proof
     )
     time_b = time()
     print(

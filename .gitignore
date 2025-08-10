@@ -1,5 +1,10 @@
-./research/*
-./venv
-./.venv
-./py3.10-env
-./__pycache__
+# Virtual environments
+.venv/
+venv/
+py3.10-env/
+
+# Python cache files
+__pycache__/
+
+# Research folder
+research/

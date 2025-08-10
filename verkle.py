@@ -588,7 +588,6 @@ class VerkleTree:
         keys: List[bytes],
         values: List[bytes],
         proof: Proof,
-        displayTime: bool = False,
     ):
         """
         Verify a Verkle tree proof.
@@ -598,7 +597,6 @@ class VerkleTree:
             keys: List of keys in the proof
             values: List of values corresponding to the keys
             proof: Proof object to verify
-            displayTime: Whether to display timing information
             
         Returns:
             True if proof is valid, False otherwise
@@ -656,8 +654,7 @@ class VerkleTree:
             Cs,
             indices,
             ys,
-            [proof.polySerialised, proof.challenge, proof.compressedMultiProof],
-            displayTime,
+            [proof.polySerialised, proof.challenge, proof.compressedMultiProof]
         )
 
     def delete(self, key: bytes) -> bool:
