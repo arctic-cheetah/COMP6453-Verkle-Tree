@@ -11,14 +11,14 @@ if _swig_python_version_info < (2, 7, 0):
 
 # Import the low-level C/C++ module
 if __package__ or "." in __name__:
-    from .verkle_trie import _blst
+    from . import _blst
 else:
     import _blst
 
 try:
     import builtins as __builtin__
 except ImportError:
-    import __builtin__
+    import __builtin__s
 
 _swig_new_instance_method = _blst.SWIG_PyInstanceMethod_New
 _swig_new_static_method = _blst.SWIG_PyStaticMethod_New

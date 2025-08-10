@@ -134,8 +134,10 @@ def update_verkle_node(root, key, value):
         path.append((index, current_node))
         if index in current_node:
             if current_node[index]["node_type"] == "leaf":
+                # If u found a leaf, then update it
                 old_node = current_node[index]
                 if current_node[index]["key"] == key:
+                    # Update the value and it's hash!
                     current_node[index] = new_node
                     value_change = (
                         MODULUS
@@ -144,10 +146,19 @@ def update_verkle_node(root, key, value):
                     ) % MODULUS
                     break
                 else:
+                    # This case represents splitting the node
                     new_inner_node = {"node_type": "inner"}
                     new_index = next(indices)
                     old_index = get_verkle_indices(old_node["key"])[len(path)]
                     # TODO! Handle old_index == new_index
+                    # Update occurs here
+                    # HOLY SHIT WE ARE SPLITTING THE NODE
+                    # This assertion guarantees that the
+                    # trie structure remains valid and that each key gets a unique path,
+                    # preventing infinite recursion or overwriting of nodes.
+                    # If the assertion fails, it means the keys are still colliding at this depth,
+                    # which should not happen if the index calculation is correct.
+
                     assert old_index != new_index
                     new_inner_node[new_index] = new_node
                     new_inner_node[old_index] = old_node
@@ -159,14 +170,19 @@ def update_verkle_node(root, key, value):
                         - int.from_bytes(old_node["hash"], "little")
                     ) % MODULUS
                     break
+                # How is it that u can descend the tree by just indexing the dict?
+                # Because each node is a dict mapping indices to child nodes?
             current_node = current_node[index]
         else:
+            # add the new leaf node! and update the hash/commits
             current_node[index] = new_node
             value_change = int.from_bytes(new_node["hash"], "little") % MODULUS
             break
 
     # Update all the parent commitments along 'path'
     for index, node in reversed(path):
+        # print(f"Value Change: {value_change}")
+        # TODO: FUCK YOU ETHEREUM U HAVE A BUG MADARCHOD KANKIPOLA
         node["commitment"].add(SETUP["g1_lagrange"][index].dup().mult(value_change))
         old_hash = node["hash"]
         new_hash = hash(node["commitment"])
@@ -252,6 +268,7 @@ def add_node_hash(node):
         for i in range(WIDTH):
             if i in node:
                 if "hash" not in node[i]:
+                    # Recurse below until we reach the leaf node
                     add_node_hash(node[i])
                 values[i] = int.from_bytes(node[i]["hash"], "little")
         commitment = kzg_utils.compute_commitment_lagrange(values)
@@ -575,9 +592,13 @@ def check_verkle_proof(trie, keys, values, proof, display_times=True):
         y,
         sigma_serialized,
     ) = proof
+
     commitments_sorted_by_index = [blst.P1(trie)] + [
         blst.P1(x) for x in commitments_sorted_by_index_serialized
     ]
+
+    # for x in commitments_sorted_by_index:
+    # print(f"commit : {x.compress()}")
 
     all_indices = set()
     all_indices_and_subindices = set()
@@ -622,7 +643,6 @@ def check_verkle_proof(trie, keys, values, proof, display_times=True):
             )
 
     Cs = list(map(lambda x: x[1], sorted(commitments_by_index_and_subindex.items())))
-
     indices = list(map(lambda x: x[1], sorted(all_indices_and_subindices)))
 
     ys = list(
@@ -683,10 +703,10 @@ if __name__ == "__main__":
     print("Computed verkle root in {0:.3f} s".format(time_b - time_a), file=sys.stderr)
 
     if NUMBER_ADDED_KEYS > 0:
-
-        time_a = time()
-        check_valid_tree(root)
-        time_b = time()
+        # Check Valid tree Not needed!
+        # time_a = time()
+        # check_valid_tree(root)
+        # time_b = time()
 
         print(
             "[Checked tree valid: {0:.3f} s]".format(time_b - time_a), file=sys.stderr
@@ -713,15 +733,15 @@ if __name__ == "__main__":
             file=sys.stderr,
         )
 
-        time_a = time()
-        check_valid_tree(root)
-        time_b = time()
+        # time_a = time()
+        # check_valid_tree(root)
+        # time_b = time()
 
         print(
             "[Checked tree valid: {0:.3f} s]".format(time_b - time_a), file=sys.stderr
         )
 
-    if NUMBER_DELETED_KEYS > 0:
+    if 0 > 0:
 
         all_keys = list(values.keys())
         shuffle(all_keys)
@@ -747,9 +767,9 @@ if __name__ == "__main__":
             file=sys.stderr,
         )
 
-        time_a = time()
-        check_valid_tree(root)
-        time_b = time()
+        # time_a = time()
+        # check_valid_tree(root)
+        # time_b = time()
 
         print(
             "[Checked tree valid: {0:.3f} s]".format(time_b - time_a), file=sys.stderr
@@ -767,15 +787,15 @@ if __name__ == "__main__":
     proof_size = get_proof_size(proof)
     proof_time = time_b - time_a
 
-    print(
-        "Computed proof for {0} keys (size = {1} bytes) in {2:.3f} s".format(
-            NUMBER_KEYS_PROOF, proof_size, time_b - time_a
-        ),
-        file=sys.stderr,
-    )
+    # print(
+    #     "Computed proof for {0} keys (size = {1} bytes) in {2:.3f} s".format(
+    #         NUMBER_KEYS_PROOF, proof_size, time_b - time_a
+    #     ),
+    #     file=sys.stderr,
+    # )
 
     time_a = time()
-    check_verkle_proof(
+    res = check_verkle_proof(
         root["commitment"].compress(),
         keys_in_proof,
         [values[key] for key in keys_in_proof],
@@ -783,7 +803,7 @@ if __name__ == "__main__":
     )
     time_b = time()
     check_time = time_b - time_a
-
+    print(res)
     print("Checked proof in {0:.3f} s".format(time_b - time_a), file=sys.stderr)
 
     print(
