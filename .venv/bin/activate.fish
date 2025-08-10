@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV /mnt/c/Users/omarb/Documents/UNSW/COMP6453/COMP6453-Verkle-Tree/.venv
+set -gx VIRTUAL_ENV /home/shada/COMP6453/Term_Project/COMP6453-Verkle-Tree/.venv
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH

@@ -38,7 +38,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV=/mnt/c/Users/omarb/Documents/UNSW/COMP6453/COMP6453-Verkle-Tree/.venv
+VIRTUAL_ENV=/home/shada/COMP6453/Term_Project/COMP6453-Verkle-Tree/.venv
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
