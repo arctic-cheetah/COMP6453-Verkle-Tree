@@ -6,17 +6,28 @@ NUMBER_INITIAL_KEYS = 2**15
 NUMBER_ADDED_KEYS = 512
 NUMBER_KEYS_PROOF = 5000
 NUMBER_DELETED_KEYS = 512
-# Testing umbers below
-# NUMBER_INITIAL_KEYS = 10
-# NUMBER_ADDED_KEYS = 10
+
 
 
 def main():
+    """
+    Main function demonstrating Verkle tree operations.
+    
+    This function performs a comprehensive test of the Verkle tree implementation:
+    1. Inserts initial set of key-value pairs
+    2. Computes and validates the tree structure
+    3. Inserts additional key-value pairs with immediate updates
+    4. Creates and verifies proofs for a subset of keys
+    5. Deletes a subset of keys and validates the tree
+    
+    The function measures and reports timing for each operation to assess performance.
+    """
     tree = VerkleTree()
     values = {}
     keys = []
     upper_limit = 2**256 - 1
-    # This part is fine
+    
+    # Insert initial set of key-value pairs
     time_a = time()
     for i in range(NUMBER_INITIAL_KEYS):
         key = randint(0, upper_limit).to_bytes(32, "little")
@@ -29,39 +40,19 @@ def main():
         "Inserted {0} elements in {1:.3f}s".format(NUMBER_INITIAL_KEYS, time_b - time_a)
     )
 
-    # Inserted
+    # Compute root commitment for initial tree
     time_a = time()
     add_node_hash(tree.root)
-    # add_node_hash_parallel(tree.root)
     time_b = time()
     print("Computed verkle root (insert) in {0:.3f}s".format(time_b - time_a))
 
+    # Validate the tree structure
     time_a = time()
     checkValidTree(tree.root)
     time_b = time()
     print("Check that verkle tree is valid in {0:.3f}s".format(time_b - time_a))
 
-    # This returns True as it should
-    # proof_for_definitely_existing_key = tree.make_verkle_proof(tree, [keys[4]])
-    # print(
-    #     "Computed proof for definitely existing key {0} as Proof:\n\t {1}".format(
-    #         int.from_bytes(keys[4], "little"), proof_for_definitely_existing_key
-    #     )
-    # )
-
-    # res = tree.check_verkle_proof(
-    #     tree.root.commitment.compress(),
-    #     [keys[4]],
-    #     [values[keys[4]]],
-    #     proof_for_definitely_existing_key,
-    #     False,
-    # )
-    # print(
-    #     "Computed verification for definitely existing key {0} with Success: {1}".format(
-    #         int.from_bytes(keys[4], "little"), res
-    # ))
-
-    # This part is fine
+    # Insert additional key-value pairs with immediate updates
     key_list = []
     time_a = time()
     for _ in range(NUMBER_ADDED_KEYS):
@@ -89,15 +80,15 @@ def main():
         )
     )
 
-    # Inserted
+    # Compute root commitment for updated tree
     time_a = time()
     add_node_hash(tree.root)
-    # add_node_hash_parallel(tree.root)
     time_b = time()
     print(
         "Computed verkle root (insert_and_update) in {0:.3f}s".format(time_b - time_a)
     )
 
+    # Create proof for a subset of keys
     time_a = time()
     proof = tree.make_verkle_proof(tree, key_list[:NUMBER_KEYS_PROOF])
     time_b = time()
@@ -105,7 +96,7 @@ def main():
         "Computed proof for {0} in {1:.3f}s".format(NUMBER_KEYS_PROOF, time_b - time_a)
     )
 
-    # Verify the proof
+    # Verify the proof with correct keys
     time_a = time()
     res = tree.check_verkle_proof(
         tree.root.commitment.compress(),
@@ -119,6 +110,7 @@ def main():
         "Computed Successful verification: {0} in {1:.3f}s".format(res, time_b - time_a)
     )
 
+    # Verify the proof with incorrect keys (should fail)
     res = tree.check_verkle_proof(
         tree.root.commitment.compress(),
         key_list[:2],
@@ -133,7 +125,7 @@ def main():
         )
     )
 
-    # Node deletion:
+    # Delete a subset of keys
     all_keys = list(values.keys())
     shuffle(all_keys)
     keys_to_delete = all_keys[:NUMBER_DELETED_KEYS]
@@ -149,15 +141,13 @@ def main():
             NUMBER_DELETED_KEYS, time_b - time_a
         ),
     )
+    
+    # Validate the tree after deletions
     time_a = time()
     checkValidTree(tree.root)
     time_b = time()
     print("Check that verkle tree is valid in {0:.3f}s".format(time_b - time_a))
 
-    # tree2_verfn = tree2.verify(tree2_root_commit, 0xDEADBEEF, tree2_proof_key_2025)
-
-
-# TODO: Enter via here:
 
 if __name__ == "__main__":
     main()

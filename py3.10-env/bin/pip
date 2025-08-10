@@ -1,4 +1,7 @@
+<<<<<<< HEAD:py3.10-env/bin/pip
 #!/home/lorikeet/COMP6453-Verkle-Tree/py3.10-env/bin/python3.10
+=======
+>>>>>>> 018d44acc2253109027730bed878b80af6afbe4a:.venv/bin/pip
 # -*- coding: utf-8 -*-
 import re
 import sys

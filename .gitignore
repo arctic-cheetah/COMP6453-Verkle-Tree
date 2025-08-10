@@ -1,3 +1,5 @@
 ./research/*
 ./venv
+./.venv
+./py3.10-env
 ./__pycache__

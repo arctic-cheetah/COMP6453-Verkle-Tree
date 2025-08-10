@@ -1,3 +1,4 @@
+<<<<<<< HEAD:py3.10-env/bin/numpy-config
 #!/home/lorikeet/COMP6453-Verkle-Tree/py3.10-env/bin/python3.10
 # -*- coding: utf-8 -*-
 import re
@@ -5,4 +6,12 @@ import sys
 from numpy._configtool import main
 if __name__ == '__main__':
     sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+=======
+#!/home/shada/COMP6453/Term_Project/COMP6453-Verkle-Tree/.venv/bin/python3.10
+import sys
+from numpy._configtool import main
+if __name__ == '__main__':
+    if sys.argv[0].endswith('.exe'):
+        sys.argv[0] = sys.argv[0][:-4]
+>>>>>>> 018d44acc2253109027730bed878b80af6afbe4a:.venv/bin/numpy-config
     sys.exit(main())

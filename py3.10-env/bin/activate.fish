@@ -33,7 +33,11 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
+<<<<<<< HEAD:py3.10-env/bin/activate.fish
 set -gx VIRTUAL_ENV /home/lorikeet/COMP6453-Verkle-Tree/py3.10-env
+=======
+set -gx VIRTUAL_ENV /home/shada/COMP6453/Term_Project/COMP6453-Verkle-Tree/.venv
+>>>>>>> 018d44acc2253109027730bed878b80af6afbe4a:.venv/bin/activate.fish
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH
