@@ -710,15 +710,25 @@ class NodeType(Enum):
 class VerkleNode:
     # TODO: THIS IS POTENTIAL OF SPACE COMPLEXITY COST HERE BECAUSE LIST[NONE] *256
     # children: List["VerkleNode"] = [None] * VerkleTree.KEY_LEN
-    children: np.ndarray["VerkleNode"] = np.array(
-        [None] * VerkleTree.KEY_LEN, dtype=object
-    )
+    # children: np.ndarray["VerkleNode"] = np.array(
+    #     [None] * VerkleTree.KEY_LEN, dtype=object
+    # )
 
-    commitment: blst.P1 = blst.G1().mult(0)
-    commitmentCompressed: bytes = b""
-    value: bytes = b""
-    key: bytes = b""
-    hash: bytes = b""
+    # commitment: blst.P1 = blst.G1().mult(0)
+    # commitmentCompressed: bytes = b""
+    # value: bytes = b""
+    # key: bytes = b""
+    # hash: bytes = b""
+    __slots__ = (
+        "children",
+        "commitment",
+        "commitmentCompressed",
+        "value",
+        "key",
+        "hash",
+        "branch_factor",
+        "node_type",
+    )
 
     # Empty || Leaf(Key, Value) || Node(Commitment, Children)
     # Commitment is a polynomial commitment to the values in the children nodes.
@@ -739,6 +749,7 @@ class VerkleNode:
         self.key = key
         self.branch_factor = KEY_LEN
         self.value = value
+        self.hash = b""
         if node_type == NodeType.INNER:
             self.children = np.array([None] * KEY_LEN, dtype=object)
         else:

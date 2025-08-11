@@ -745,7 +745,6 @@ if __name__ == "__main__":
 
         all_keys = list(values.keys())
         shuffle(all_keys)
-
         keys_to_delete = all_keys[:NUMBER_DELETED_KEYS]
 
         time_a = time()
