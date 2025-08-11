@@ -7,6 +7,7 @@ py3.10-env/
 # Python cache files
 __pycache__/
 __pycache__
+./__pycache__
 __pycache__/*
 ./__pycache__/*
 
