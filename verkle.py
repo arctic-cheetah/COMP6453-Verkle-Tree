@@ -509,22 +509,24 @@ class VerkleTree:
 
         # All commitments, but without any duplications. These are for sending over the wire as part of the proof
         nodesSortedByIndex = np.array(
-            [map(lambda x: x[1], sorted(nodesByIndex.items()))], dtype=object
+            list(map(lambda x: x[1], sorted(nodesByIndex.items()))), dtype=object
         )
         nodesCompressedSortedByIndex = np.array(
-            [map(lambda x: x[1].commitment.compress(), sorted(nodesByIndex.items()))],
+            list(
+                map(lambda x: x[1].commitment.compress(), sorted(nodesByIndex.items()))
+            ),
             dtype=object,
         )
         nodesSortedByIndexAndSubIndex = np.array(
-            [map(lambda x: x[1], sorted(nodesByIndexSubIndex.items()))],
+            list(map(lambda x: x[1], sorted(nodesByIndexSubIndex.items()))),
             dtype=object,
         )
         indices = np.array(
-            [map(lambda x: x[0][1], sorted(nodesByIndexSubIndex.items()))],
+            list(map(lambda x: x[0][1], sorted(nodesByIndexSubIndex.items()))),
             dtype=int,
         )
         ys = np.array(
-            [
+            list(
                 map(
                     lambda x: (
                         int.from_bytes((x[1].children[x[0][1]]).hash, "little")
@@ -533,7 +535,7 @@ class VerkleTree:
                     ),
                     sorted(nodesByIndexSubIndex.items()),
                 )
-            ],
+            ),
             dtype=object,
         )
 
