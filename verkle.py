@@ -18,15 +18,15 @@ NUMBER_KEYS_PROOF = 5000
 def generate_setup(size: int, secret: int) -> Dict[str, List[blst.P1 | blst.P2]]:
     """
     Generate KZG setup parameters for polynomial commitments.
-    
+
     Creates setup elements in G1 and G2 groups using the given secret,
     where G1 is the polynomial commitment group and G2 is the pairing group.
     Also generates Lagrange polynomials in G1 via FFT.
-    
+
     Args:
         size: Number of setup elements to generate
         secret: Secret value for generating the setup
-        
+
     Returns:
         Dictionary containing 'g1', 'g2', and 'g1_lagrange' arrays
     """
@@ -56,13 +56,13 @@ kzg_utils = KzgUtils(MODULUS, WIDTH, DOMAIN, SETUP, primefield)
 def hash(x):
     """
     Hash function for bytes, integers, blst.P1 objects, and lists.
-    
+
     If input is a list, hashes each element and concatenates the results.
     For blst.P1 objects, compresses them first before hashing.
-    
+
     Args:
         x: Input to hash (bytes, int, blst.P1, or list of these types)
-        
+
     Returns:
         SHA256 hash digest as bytes
     """
@@ -84,10 +84,10 @@ def hash(x):
 def hash_to_int(data) -> int:
     """
     Convert hash digest to integer.
-    
+
     Args:
         data: Data to hash and convert
-        
+
     Returns:
         Integer representation of the hash
     """
@@ -97,7 +97,7 @@ def hash_to_int(data) -> int:
 class Proof:
     """
     Represents a Verkle tree proof containing all necessary data for verification.
-    
+
     Attributes:
         depths: Array of depths for each key in the proof
         commitsSortedByIndex: Array of commitments sorted by index
@@ -105,6 +105,7 @@ class Proof:
         challenge: Challenge value for the proof
         compressedMultiProof: Compressed KZG multiproof
     """
+
     depths: np.ndarray = np.array([], dtype=object)
     commitsSortedByIndex: np.ndarray = np.array([], dtype=object)
     polySerialised: bytes = b""
@@ -141,10 +142,11 @@ class NodeType(Enum):
 class VerkleTree:
     """
     Implementation of a Verkle tree with polynomial commitments at each node.
-    
+
     A Verkle tree is a Merkle tree where each node contains a polynomial commitment
     to its children's values, enabling efficient batch proofs.
     """
+
     KEY_LEN = 256
     WIDTH_BITS = 8
     WIDTH = 2**WIDTH_BITS
@@ -167,10 +169,10 @@ class VerkleTree:
     def insert(self, currRoot: "VerkleNode", key: bytes, value: bytes):
         """
         Insert a key-value pair without updating hashes/commitments.
-        
+
         This method allows building a full trie before computing commitments.
         Handles key collisions by splitting leaf nodes when necessary.
-        
+
         Args:
             currRoot: Root node to start insertion from
             key: Key to insert
@@ -214,14 +216,14 @@ class VerkleTree:
     def insert_update_node(self, key: bytes, value: bytes) -> bool:
         """
         Insert or update a key-value pair with immediate commitment updates.
-        
+
         This method updates all parent commitments along the insertion path
         and handles key collisions by splitting nodes when necessary.
-        
+
         Args:
             key: Key to insert or update
             value: Value associated with the key
-            
+
         Returns:
             True if insertion was successful, False if index collision occurred
         """
@@ -309,12 +311,12 @@ class VerkleTree:
     def getVerkleIndex(self, key: bytes) -> Tuple[int]:
         """
         Generate Verkle indices for a given key.
-        
+
         Converts the key into a sequence of indices used for tree traversal.
-        
+
         Args:
             key: Key to convert to indices
-            
+
         Returns:
             Tuple of indices for tree traversal
         """
@@ -329,18 +331,17 @@ class VerkleTree:
             indices.append(index)
         return tuple(np.array(list(reversed(indices)), dtype=int))
 
-
     def check_kzg_multiproof(self, Cs, indices, ys, proof):
         """
         Verify a KZG multiproof according to the schema described in:
         https://dankradfeist.de/ethereum/2021/06/18/pcs-multiproofs.html
-        
+
         Args:
             Cs: List of commitments
             indices: List of indices
             ys: List of y-values
             proof: Tuple containing (D_serialized, y, sigma_serialized)
-            
+
         Returns:
             True if proof is valid, False otherwise
         """
@@ -391,13 +392,13 @@ class VerkleTree:
         """
         Compute a KZG multiproof according to the schema described in:
         https://dankradfeist.de/ethereum/2021/06/18/pcs-multiproofs.html
-        
+
         Args:
             Cs: List of commitments
             fs: List of polynomials
             indices: List of indices
             ys: List of y-values
-            
+
         Returns:
             Tuple containing (D_serialized, y, sigma_serialized)
         """
@@ -451,11 +452,11 @@ class VerkleTree:
     def find_node_with_path(self, node: "VerkleNode", key: bytes):
         """
         Find a node with the given key and return the path to it.
-        
+
         Args:
             node: Starting node for search
             key: Key to search for
-            
+
         Returns:
             Tuple of (path, node) where path contains (index_path, index, node) tuples
         """
@@ -475,16 +476,14 @@ class VerkleTree:
             return path, current_node
         return path, None
 
-    def make_verkle_proof(
-        self, tree: "VerkleTree", keys: List[bytes]
-    ) -> Proof:
+    def make_verkle_proof(self, tree: "VerkleTree", keys: List[bytes]) -> Proof:
         """
         Create a proof for the given keys in the Verkle tree.
-        
+
         Args:
             tree: The Verkle tree to create proof for
             keys: List of keys to include in the proof
-            
+
         Returns:
             Proof object containing all necessary data for verification
         """
@@ -591,13 +590,13 @@ class VerkleTree:
     ):
         """
         Verify a Verkle tree proof.
-        
+
         Args:
             rootCommit: Root commitment of the tree
             keys: List of keys in the proof
             values: List of values corresponding to the keys
             proof: Proof object to verify
-            
+
         Returns:
             True if proof is valid, False otherwise
         """
@@ -654,19 +653,19 @@ class VerkleTree:
             Cs,
             indices,
             ys,
-            [proof.polySerialised, proof.challenge, proof.compressedMultiProof]
+            [proof.polySerialised, proof.challenge, proof.compressedMultiProof],
         )
 
     def delete(self, key: bytes) -> bool:
         """
         Delete a key-value pair from the Verkle tree.
-        
+
         Removes the leaf with the given key and prunes empty/single-leaf inner nodes.
         Recomputes commitments and hashes for affected nodes.
-        
+
         Args:
             key: Key to delete
-            
+
         Returns:
             True if key was found and deleted, False otherwise
         """
@@ -736,20 +735,27 @@ class VerkleTree:
 class VerkleNode:
     """
     Represents a node in the Verkle tree.
-    
+
     Each node can be either an inner node (with children) or a leaf node
     (with a key-value pair). Inner nodes contain polynomial commitments
     to their children's values.
     """
-    children: np.ndarray["VerkleNode"] = np.array(
-        [None] * VerkleTree.KEY_LEN, dtype=object
-    )
 
-    commitment: blst.P1 = blst.G1().mult(0)
-    commitmentCompressed: bytes = b""
-    value: bytes = b""
-    key: bytes = b""
-    hash: bytes = b""
+    # commitment: blst.P1 = blst.G1().mult(0)
+    # commitmentCompressed: bytes = b""
+    # value: bytes = b""
+    # key: bytes = b""
+    # hash: bytes = b""
+    __slots__ = (
+        "children",
+        "commitment",
+        "commitmentCompressed",
+        "value",
+        "key",
+        "hash",
+        "branch_factor",
+        "node_type",
+    )
 
     # Empty || Leaf(Key, Value) || Node(Commitment, Children)
     # Commitment is a polynomial commitment to the values in the children nodes.
@@ -764,7 +770,7 @@ class VerkleNode:
     ):
         """
         Initialize a Verkle node.
-        
+
         Args:
             branch_factor: Number of children for inner nodes
             value: Value for leaf nodes
@@ -774,6 +780,7 @@ class VerkleNode:
         self.key = key
         self.branch_factor = KEY_LEN
         self.value = value
+        self.hash = b""
         if node_type == NodeType.INNER:
             self.children = np.array([None] * KEY_LEN, dtype=object)
         else:
@@ -787,11 +794,11 @@ class VerkleNode:
 def add_node_hash(node: VerkleNode):
     """
     Recursively compute commitments and hashes for a Verkle tree structure.
-    
+
     Uses Ethereum's implementation of KZG computation for polynomial commitments.
     For leaf nodes, computes hash of key-value pair.
     For inner nodes, computes polynomial commitment to children's hashes.
-    
+
     Args:
         node: Root node to start computation from
     """
@@ -811,10 +818,10 @@ def add_node_hash(node: VerkleNode):
 def checkValidTree(root: VerkleNode):
     """
     Validate the entire Verkle tree structure.
-    
+
     Recursively checks that all commitments and hashes are correctly computed
     throughout the tree.
-    
+
     Args:
         root: Root node of the tree to validate
     """
@@ -834,7 +841,7 @@ def checkValidTree(root: VerkleNode):
         assert root.hash == hash([root.key, root.value])
 
 
-#from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+# from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 
 # Parallel processing confers no advantage here
 
@@ -878,4 +885,3 @@ def checkValidTree(root: VerkleNode):
 #         node.hash = hash(node.commitment.compress())
 #         node.commitment = kzg_utils.compute_commitment_lagrange(values)
 #         node.hash = hash(node.commitment.compress())
-
