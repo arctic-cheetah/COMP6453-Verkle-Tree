@@ -741,10 +741,6 @@ class VerkleNode:
     to their children's values.
     """
 
-    children: np.ndarray["VerkleNode"] = np.array(
-        [None] * VerkleTree.KEY_LEN, dtype=object
-    )
-
     # commitment: blst.P1 = blst.G1().mult(0)
     # commitmentCompressed: bytes = b""
     # value: bytes = b""
